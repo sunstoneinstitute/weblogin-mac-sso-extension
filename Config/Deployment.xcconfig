@@ -1,0 +1,30 @@
+// Deployment configuration for the Weblogin SSO app + extension.
+//
+// This file holds every value that a deployer (other than UiO) needs to change:
+// bundle identifiers, the associated-domains host, and code-signing inputs.
+// The project's build settings reference these via $(VAR), so the .pbxproj and
+// the .entitlements files stay deployment-agnostic and rarely conflict on merge.
+//
+// The values below are UiO's defaults — a plain `xcodebuild` build is unchanged.
+// To deploy elsewhere, override any of these in Config/Local.xcconfig (git-ignored;
+// copy Config/Local.xcconfig.example), or pass them on the xcodebuild command line.
+
+// --- Identifiers ---
+APP_BUNDLE_ID  = no.uio.WebloginSSO
+SSOE_BUNDLE_ID = $(APP_BUNDLE_ID).ssoe
+// Associated-domains host used by both authsrv and webcredentials (see the
+// .entitlements files). Single host; add more entries there if you need several.
+SSO_HOST       = weblogin2.uio.no
+
+// --- Code signing ---
+// Automatic (UiO dev default). Override to `Manual` for Developer ID distribution.
+SIGNING_STYLE    = Automatic
+SIGNING_TEAM     = L6H6YNBUBK
+SIGNING_IDENTITY = Apple Development
+// Provisioning profiles are required per target for Developer ID builds that use
+// the Associated Domains managed capability. Empty = let automatic signing manage.
+APP_PROVISIONING_PROFILE  =
+SSOE_PROVISIONING_PROFILE =
+
+// Local, per-deployer overrides (not tracked). The `?` makes it optional.
+#include? "Local.xcconfig"
