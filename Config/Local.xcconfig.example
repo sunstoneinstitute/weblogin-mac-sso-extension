@@ -1,0 +1,15 @@
+// Copy this file to Config/Local.xcconfig (git-ignored) and fill in your values.
+// Anything set here overrides the defaults in Config/Deployment.xcconfig.
+// You can also pass any of these on the command line, e.g.:
+//   xcodebuild ... SSO_HOST=idp.example.com SIGNING_STYLE=Manual
+//
+// Example: a Developer ID distribution build for your own IdP.
+//
+// APP_BUNDLE_ID  = com.example.psso-extension
+// SSO_HOST       = idp.example.com
+//
+// SIGNING_STYLE    = Manual
+// SIGNING_TEAM     = ABCDE12345
+// SIGNING_IDENTITY = Developer ID Application
+// APP_PROVISIONING_PROFILE  = Example PSSO App (Developer ID)
+// SSOE_PROVISIONING_PROFILE = Example PSSO Extension (Developer ID)
