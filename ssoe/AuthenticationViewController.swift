@@ -32,7 +32,10 @@ import LocalAuthentication
 
 
 private let kService = "Weblogin SSO Session Cache"
-let logger = Logger(subsystem: "no.uio.WebloginSSO", category: "general")
+// Deployment-specific identifiers, injected from build settings via Info.plist
+// (see Config/Deployment.xcconfig). Fallbacks match the UiO defaults.
+let kAppGroupID = Bundle.main.object(forInfoDictionaryKey: "AppGroupID") as? String ?? "group.no.uio.weblogin"
+let logger = Logger(subsystem: Bundle.main.object(forInfoDictionaryKey: "LogSubsystem") as? String ?? "no.uio.WebloginSSO", category: "general")
 
 class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
     
@@ -194,7 +197,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         
         webView.configuration.userContentController.add(self, name: "pssoStepUp")
         
-        let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")
+        let sharedDefaults = UserDefaults(suiteName: kAppGroupID)
         let disableSSO = sharedDefaults?.bool(forKey: "disable_sso") ?? false
         let deviceRegistered = request.loginManager?.isDeviceRegistered ?? false && request.loginManager?.isUserRegistered ?? false
         let userRegistered = request.loginManager?.isUserRegistered ?? false && request.loginManager?.isUserRegistered ?? false
@@ -821,7 +824,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
     func configuration() -> ASAuthorizationProviderExtensionLoginConfiguration {
         
         logger.debug("webloginlog: getting configuration")
-        let domain = Bundle.main.bundleIdentifier ?? "no.uio.webloginSSO.ssoe"
+        let domain = Bundle.main.bundleIdentifier ?? "no.uio.WebloginSSO.ssoe"
 
         let clientID = CFPreferencesCopyAppValue("ClientID" as CFString, domain as CFString) as? String ?? "fallback-client"
         let baseURL  = CFPreferencesCopyAppValue("BaseURL" as CFString, domain as CFString) as? String ?? "fallback-baseURL"
