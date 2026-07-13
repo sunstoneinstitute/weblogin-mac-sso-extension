@@ -15,6 +15,10 @@ SSOE_BUNDLE_ID = $(APP_BUNDLE_ID).ssoe
 // Associated-domains host used by both authsrv and webcredentials (see the
 // .entitlements files). Single host; add more entries there if you need several.
 SSO_HOST       = weblogin2.uio.no
+// App Group shared between the app and the extension (entitlements + the
+// UserDefaults suite read at runtime, surfaced to code via Info.plist).
+// Changing this on an existing install orphans previously stored suite data.
+APP_GROUP_ID   = group.no.uio.weblogin
 
 // --- Code signing ---
 // Automatic (UiO dev default). Override to `Manual` for Developer ID distribution.

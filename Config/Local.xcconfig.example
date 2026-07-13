@@ -7,6 +7,9 @@
 //
 // APP_BUNDLE_ID  = com.example.psso-extension
 // SSO_HOST       = idp.example.com
+// APP_GROUP_ID   = group.com.example.psso
+//   (register the group for both App IDs; changing it on an existing install
+//    orphans previously stored shared-suite data)
 //
 // SIGNING_STYLE    = Manual
 // SIGNING_TEAM     = ABCDE12345
