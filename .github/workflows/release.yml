@@ -5,7 +5,12 @@
 # Trigger: push a tag like v1.5.2-sunstone.1 (tag = deliberate release decision;
 # upstream churn never reaches the fleet on its own).
 #
-# Required repository secrets (see docs/RELEASING.md for how to mint these):
+# Required secrets, scoped to the "release" GitHub Actions environment (NOT
+# repository secrets — those would be visible to every PR build). The
+# environment's deployment branch policy further restricts it to tag refs
+# matching v* — a workflow_dispatch off main, or any non-tag ref, cannot see
+# these secrets even though workflow_dispatch is still a valid trigger. See
+# docs/RELEASING.md for how to mint these:
 #   DEVID_CERTS_P12          base64 .p12 containing BOTH Developer ID
 #                            Application and Developer ID Installer certs+keys
 #   DEVID_CERTS_PASSWORD     password of that .p12
@@ -27,6 +32,7 @@ permissions:
 jobs:
   release:
     runs-on: macos-26
+    environment: release
     steps:
       - uses: actions/checkout@v4
 

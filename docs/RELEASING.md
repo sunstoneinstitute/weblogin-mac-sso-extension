@@ -72,14 +72,29 @@ contents (`NOTARY_KEY`). The .p8 can only be downloaded once.
 
 ### 4. GitHub secrets
 
+These go in the `release` **environment**, not plain repository secrets —
+repository secrets are visible to every PR build, environment secrets are
+only available to jobs that declare `environment: release` (see
+`.github/workflows/release.yml`).
+
+The environment is further locked to tag refs matching `v*` via a deployment
+branch policy, so even a `workflow_dispatch` run off `main` can't read these
+secrets:
+
 ```bash
-gh secret set DEVID_CERTS_P12 < <(base64 -i devid-certs.p12)
-gh secret set DEVID_CERTS_PASSWORD
-gh secret set APP_PROVISIONING_PROFILE_B64 < <(base64 -i app.provisionprofile)
-gh secret set SSOE_PROVISIONING_PROFILE_B64 < <(base64 -i ssoe.provisionprofile)
-gh secret set NOTARY_ISSUER_ID
-gh secret set NOTARY_KEY_ID
-gh secret set NOTARY_KEY < AuthKey_XXXXXXXXXX.p8
+gh api -X PUT repos/<owner>/<repo>/environments/release \
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true'
+gh api -X POST repos/<owner>/<repo>/environments/release/deployment-branch-policies \
+  -f name='v*' -f type='tag'
+
+gh secret set DEVID_CERTS_P12 --env release < <(base64 -i devid-certs.p12)
+gh secret set DEVID_CERTS_PASSWORD --env release
+gh secret set APP_PROVISIONING_PROFILE_B64 --env release < <(base64 -i app.provisionprofile)
+gh secret set SSOE_PROVISIONING_PROFILE_B64 --env release < <(base64 -i ssoe.provisionprofile)
+gh secret set NOTARY_ISSUER_ID --env release
+gh secret set NOTARY_KEY_ID --env release
+gh secret set NOTARY_KEY --env release < AuthKey_XXXXXXXXXX.p8
 ```
 
 ## Shipping to the fleet
