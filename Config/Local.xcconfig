@@ -8,6 +8,9 @@
 APP_BUNDLE_ID = ai.sunstoneinstitute.psso-extension
 // -> extension is ai.sunstoneinstitute.psso-extension.ssoe (SSOE_BUNDLE_ID default)
 SSO_HOST      = auth.sunstoneinstitute.ai
+// Must be registered in the Apple Developer portal and enabled on BOTH App IDs
+// (app + .ssoe) before the Developer ID provisioning profiles are created.
+APP_GROUP_ID  = group.ai.sunstoneinstitute.psso
 
 // --- Code signing: Developer ID + notarization (see the SSO Phase-1 plan) ---
 SIGNING_STYLE    = Manual
