@@ -33,6 +33,9 @@ jobs:
   release:
     runs-on: macos-26
     environment: release
+    # A healthy run takes ~10 minutes; anything longer means something is
+    # waiting on a dialog or Apple, so fail fast instead of soaking a runner.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -48,8 +51,13 @@ jobs:
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security set-keychain-settings -lut 3600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # Every binary that will use the private keys must be trusted here,
+          # or macOS tries to show a keychain access dialog and the headless
+          # runner hangs forever. productbuild signs the pkg, so it needs to
+          # be listed alongside codesign/productsign.
           security import $RUNNER_TEMP/certs.p12 -k "$KEYCHAIN" \
-            -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+            -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign \
+            -T /usr/bin/productbuild
           security set-key-partition-list -S apple-tool:,apple: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
@@ -110,7 +118,7 @@ jobs:
           echo "$NOTARY_KEY" > $RUNNER_TEMP/notary.p8
           APP="build/export/Weblogin SSO.app"
           ditto -c -k --keepParent "$APP" build/app.zip
-          xcrun notarytool submit build/app.zip --wait \
+          xcrun notarytool submit build/app.zip --wait --timeout 10m \
             --issuer "$NOTARY_ISSUER_ID" --key-id "$NOTARY_KEY_ID" \
             --key $RUNNER_TEMP/notary.p8
           xcrun stapler staple "$APP"
@@ -128,7 +136,7 @@ jobs:
             --version "$VERSION" \
             --sign "Developer ID Installer" \
             "$PKG"
-          xcrun notarytool submit "$PKG" --wait \
+          xcrun notarytool submit "$PKG" --wait --timeout 10m \
             --issuer "$NOTARY_ISSUER_ID" --key-id "$NOTARY_KEY_ID" \
             --key $RUNNER_TEMP/notary.p8
           xcrun stapler staple "$PKG"
