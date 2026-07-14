@@ -19,7 +19,14 @@ jobs:
     # APIs, so the runner needs Xcode 26 (macos-15 images top out at Xcode 16).
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - name: Run unit tests (ssoeTests)
+        run: |
+          xcodebuild -project "Weblogin SSO.xcodeproj" -scheme "ssoeTests" \
+            -destination "platform=macOS" test \
+            SIGNING_STYLE=Manual SIGNING_IDENTITY=- SIGNING_TEAM= \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
 
       - name: Show resolved deployment settings
         run: |
