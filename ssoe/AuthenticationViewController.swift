@@ -46,6 +46,11 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
         var url:URL?
         var authorizationRequest: ASAuthorizationProviderExtensionAuthorizationRequest?
         var kCallbackURLString = ""
+        // An empty/whitespace-only callback means no callback URL is known yet;
+        // `starts(with: "")` is true for every URL, so it must never be used to match.
+        var isCallbackURLKnown: Bool {
+            !kCallbackURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
         var saml = false
         // Define the IDP root (the url of the Keycloak instance)
         var referer = ""
@@ -507,8 +512,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
          */
         
         
-        // needs fixing
-        if webViewURL.absoluteString.starts(with: kCallbackURLString) {
+        if isCallbackURLKnown && webViewURL.absoluteString.starts(with: kCallbackURLString) {
        
             logger.debug("webloginlog: Intercepted redirect to callback. Send it to the browser." )
 
@@ -585,7 +589,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         */
         
         
-        if (webViewURL.absoluteString.starts(with: (kCallbackURLString)) ) {
+        if isCallbackURLKnown && webViewURL.absoluteString.starts(with: (kCallbackURLString)) {
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies({ cookies in
                
                 
