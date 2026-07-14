@@ -85,6 +85,13 @@ jobs:
           <dict>
             <key>method</key><string>developer-id</string>
             <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>ai.sunstoneinstitute.psso-extension</key>
+              <string>Sunstone PSSO App (Developer ID)</string>
+              <key>ai.sunstoneinstitute.psso-extension.ssoe</key>
+              <string>Sunstone PSSO Extension (Developer ID)</string>
+            </dict>
           </dict>
           </plist>
           EOF
