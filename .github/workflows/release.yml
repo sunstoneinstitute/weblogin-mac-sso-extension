@@ -37,7 +37,7 @@ jobs:
     # waiting on a dialog or Apple, so fail fast instead of soaking a runner.
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Import Developer ID certificates into a temporary keychain
         env:
