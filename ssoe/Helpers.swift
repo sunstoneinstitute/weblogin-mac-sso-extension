@@ -164,7 +164,7 @@ extension AuthenticationViewController {
         
     }
     
-    func getNonceFromIdp(clientRequestId: String) async throws -> UUID? {
+    func getNonceFromIdp(clientRequestId: String) async throws -> UUID {
         let config = configuration()
         let nonceEndpointURL = config.nonceEndpointURL
         var nonceRequest = URLRequest(url: nonceEndpointURL)
@@ -182,7 +182,7 @@ extension AuthenticationViewController {
         }
         catch {
             logger.error("webloginlog: Error fetching nonce: \(error)")
-            return nil
+            throw error
         }
     }
     
