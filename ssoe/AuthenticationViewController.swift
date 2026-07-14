@@ -1301,9 +1301,10 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             try loginManager.saveUserLoginConfiguration(config)
             
         }catch{
-            
+
             logger.error("webloginlog: Failed to save the configuration \(error).")
             completion(.failed)
+            return
         }
         
         if loginManager.authenticationMethod == .password {
