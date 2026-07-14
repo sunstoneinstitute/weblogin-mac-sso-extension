@@ -48,9 +48,23 @@ Notes:
 Portal order matters: **certificates → App Group → App IDs → profiles.**
 
 1. Identifiers → App Groups → register `group.ai.sunstoneinstitute.psso`.
-2. Identifiers → App IDs → register `ai.sunstoneinstitute.psso-extension` and
-   `ai.sunstoneinstitute.psso-extension.ssoe`, each with **Associated
-   Domains** and **App Groups** (assign the group) enabled.
+2. Identifiers → App IDs → register both App IDs with the capabilities below
+   checked (must match the `.entitlements` files exactly, or the archive step
+   fails with "Provisioning profile doesn't include the ... capability"):
+   - `ai.sunstoneinstitute.psso-extension` (main app — see
+     `Weblogin SSO/Weblogin_SSO.entitlements`): **Associated Domains**, **App
+     Groups**, **AutoFill Credential Provider**, **Network Extensions**.
+   - `ai.sunstoneinstitute.psso-extension.ssoe` (extension — see
+     `ssoe/ssoe.entitlements`): the same four, plus **App Attest**.
+
+   Checking **App Groups** does *not* prompt you to pick a group inline — save
+   the App ID first, then **re-open its Edit page**. A **Configure** (or
+   **Edit**) link now appears next to App Groups; click it, click **+**, select
+   `group.ai.sunstoneinstitute.psso` from the list of existing groups (created
+   in step 1 — it won't show up if you skipped that), then **Continue → Done →
+   Save**. Do this for both App IDs; the group association is otherwise silently
+   left empty and the resulting profile fails with "doesn't support the
+   group.ai.sunstoneinstitute.psso App Group".
 3. Profiles → new **Developer ID** profile per App ID, selecting the Developer
    ID Application certificate. Name them exactly as `Config/Local.xcconfig`
    expects: `Sunstone PSSO App (Developer ID)` and
@@ -58,10 +72,16 @@ Portal order matters: **certificates → App Group → App IDs → profiles.**
 4. Download both and base64 them into the
    `APP_PROVISIONING_PROFILE_B64` / `SSOE_PROVISIONING_PROFILE_B64` secrets.
 
-⚠️ These profiles are embedded in the shipped app and checked by Gatekeeper at
+ These profiles are embedded in the shipped app and checked by Gatekeeper at
 **every launch** (Associated Domains is a managed capability). Profile expiry
 bricks the installed app — put the renewal date in the ops calendar the day
 you create them.
+
+ If you add or change a capability in the `.entitlements` files later, the
+App ID's capabilities (and profile) must be updated to match — regenerate the
+profile (Profiles → edit → Save re-signs it with current capabilities) and
+re-upload the `_PROVISIONING_PROFILE_B64` secret. A stale profile fails the
+same way as never having enabled the capability at all.
 
 ### 3. Notarization API key
 
