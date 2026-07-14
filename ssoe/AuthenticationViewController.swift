@@ -1176,32 +1176,24 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             logger.error("webloginlog: Failed to save the configuration \(error). Token URL: \(token)")
         }
         
-        var nonce = nil as UUID?
         Task { @MainActor in
             do {
-                let nonceValue = try await getNonceFromIdp(clientRequestId: clientRequestId)
-                let nonceString = nonceValue?.uuidString ?? "no value"
-                logger.debug("webloginlog; Got nonce: \(nonceString)")
-                nonce = nonceValue
-            } catch {
-                logger.error("webloginlog: Error fetching nonce: \(error)")
-                completion(.failed)
-                return
-            }
-            
+            let nonce = try await getNonceFromIdp(clientRequestId: clientRequestId)
+            logger.debug("webloginlog; Got nonce: \(nonce.uuidString)")
+
             guard let baseURL else {
                 logger.error("webloginlog: No baseURL found on SSO Extension profile from MDM.")
                 completion(.failed)
                 return
             }
-            
+
             // POST to your registration endpoint
             guard let url = URL(string: baseURL+"/psso/enroll" ) else {
                 completion(.failed)
                 return
             }
-            
-            let nonceData = nonce!.uuidString.lowercased().data(using: .utf8)!
+
+            let nonceData = nonce.uuidString.lowercased().data(using: .utf8)!
             let nonceHash = SHA256.hash(data: nonceData)
             let nonceHashData = Data(nonceHash)
             let attestCertificate = try await loginManager.attestKey(ofType: .sharedDeviceSigning,  clientDataHash: nonceHashData)
@@ -1235,7 +1227,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                 "DeviceEncryptionKey": encryptionKeyB64,
                 "SignKeyID": signKeyId,
                 "EncKeyID": encKeyId,
-                "nonce" : nonce!.uuidString.lowercased(),
+                "nonce" : nonce.uuidString.lowercased(),
                 "attestation" : attestationB64,
                 "registrationMethod" : registrationMethod
             ]
@@ -1274,9 +1266,14 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                     return
                 }
             }.resume()
-            
+
+            } catch {
+                logger.error("webloginlog: Device registration failed with error: \(error)")
+                completion(.failed)
+                RegistrationState.shared.clear()
+            }
         }
-        
+
     }
     
     func registerUser(accessToken: String){
@@ -1343,20 +1340,13 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
         
       
         
-        var nonce = nil as UUID?
         let clientRequestId = UUID().uuidString
         Task {
             do {
-                let nonceValue = try await getNonceFromIdp(clientRequestId: clientRequestId)
-                logger.debug("webloginlog; Got nonce: \(nonceValue!.uuidString)")
-                nonce = nonceValue
-            } catch {
-                logger.debug("webloginlog: Error fetching nonce: \(error)")
-                completion(.failed)
-                return
-            }
-            
-            let nonceData = nonce!.uuidString.lowercased().data(using: .utf8)!
+            let nonce = try await getNonceFromIdp(clientRequestId: clientRequestId)
+            logger.debug("webloginlog; Got nonce: \(nonce.uuidString)")
+
+            let nonceData = nonce.uuidString.lowercased().data(using: .utf8)!
             let nonceHash = SHA256.hash(data: nonceData)
             let nonceHashData = Data(nonceHash)
             
@@ -1392,7 +1382,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
             let params = [
                 "userKey": userKeyB64,
                 "userKeyId": userKeyId,
-                "nonce" : nonce!.uuidString.lowercased(),
+                "nonce" : nonce.uuidString.lowercased(),
                 "attestation" : attestationB64,
                 "accessToken" : accessToken
             ]
@@ -1420,12 +1410,15 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionRegistra
                     return
                 }
             }.resume()
-            
-            
-            
+
+            } catch {
+                logger.error("webloginlog: User registration failed with error: \(error)")
+                completion(.failed)
+                RegistrationState.shared.clear()
+            }
         }
-        
-        
+
+
     }
     
     func registrationDidComplete() {
