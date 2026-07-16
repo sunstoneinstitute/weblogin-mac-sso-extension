@@ -5,6 +5,13 @@
 # Trigger: push a tag like v1.5.2-sunstone.1 (tag = deliberate release decision;
 # upstream churn never reaches the fleet on its own).
 #
+# Authorization: the tag must be an annotated tag SSH-signed by the release key
+# pinned in .github/allowed_signers (a YubiKey-resident key). The verify-tag job
+# gates the build/publish job, so a release proceeds only when the keyholder
+# blessed that exact commit. This also gates workflow_dispatch: a dispatch off a
+# branch fails the gate; a dispatch off a signed tag stays authorized. Fails
+# closed — no allowed_signers or an unsigned tag means no release.
+#
 # Required secrets, scoped to the "release" GitHub Actions environment (NOT
 # repository secrets — those would be visible to every PR build). The
 # environment's deployment branch policy further restricts it to tag refs
@@ -30,7 +37,32 @@ permissions:
   contents: write
 
 jobs:
+  verify-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Require an annotated tag signed by the pinned release key
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_type }}" != tag ]; then
+            echo "::error::release must run from a tag ref, not ${{ github.ref_type }} '${GITHUB_REF_NAME}'"
+            exit 1
+          fi
+          # checkout may bring only the commit; fetch the annotated tag object + its signature
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          if [ "$(git cat-file -t "refs/tags/${GITHUB_REF_NAME}")" != tag ]; then
+            echo "::error::${GITHUB_REF_NAME} is a lightweight tag; create releases with 'git tag -s'"
+            exit 1
+          fi
+          git config gpg.format ssh
+          git config gpg.ssh.allowedSignersFile "$GITHUB_WORKSPACE/.github/allowed_signers"
+          git verify-tag "${GITHUB_REF_NAME}"
+          echo "OK: ${GITHUB_REF_NAME} is signed by the pinned release key."
+
   release:
+    needs: verify-tag
     runs-on: macos-26
     environment: release
     # A healthy run takes ~10 minutes; anything longer means something is

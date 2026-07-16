@@ -4,12 +4,31 @@ Releases are built by `.github/workflows/release.yml` on a `v*` tag: archive →
 Developer ID sign → notarize → staple → signed .pkg → GitHub Release. Fleet
 installs the pkg from the release URL via the fleet-config repo (GitOps).
 
-Release = push a tag. Nothing reaches the fleet until fleet-config bumps the
-package URL + sha256.
+Release = push a **signed** tag: an annotated tag signed by an authorized
+release YubiKey (`git tag -s`). `release.yml` verifies the signature against
+`.github/allowed_signers` and pauses for reviewer approval before the signing
+secrets unlock. Nothing reaches the fleet until fleet-config bumps the package
+URL + sha256.
 
 ```bash
-git tag v1.5.2-sunstone.1 && git push origin v1.5.2-sunstone.1
+git tag -s v1.5.2-sunstone.1 -m v1.5.2-sunstone.1 && git push origin v1.5.2-sunstone.1
 ```
+
+## Release authorization
+
+Three independent controls gate a release; each stops a different failure:
+
+- **Signed tag** — CI (`verify-tag` in `release.yml`) requires the tag be signed
+  by a key in `.github/allowed_signers`. Holds even if a GitHub account is
+  compromised (the attacker lacks the physical YubiKey).
+- **Required reviewer** — the `release` environment needs manual approval before
+  signing secrets unlock. Stops unauthorized triggers.
+- **`v*` tag ruleset** — only org owners can create or move `v*` tags. Stops
+  leaked tokens and tag re-pointing.
+
+Recovery: if a release YubiKey is lost, remove its line from
+`.github/allowed_signers` (reviewed PR) and enroll a replacement. Keep at least
+two YubiKeys enrolled so a lost key never blocks releases in the meantime.
 
 ## One-time setup
 
@@ -123,6 +142,29 @@ gh secret set NOTARY_ISSUER_ID --env release
 gh secret set NOTARY_KEY_ID --env release
 gh secret set NOTARY_KEY --env release < AuthKey_XXXXXXXXXX.p8
 ```
+
+### 5. Release-signing YubiKey
+
+The tag signature comes from a FIDO2 key resident on a YubiKey — the private key
+never leaves the device and each signature needs a touch. Enroll one per key
+(`sunstone1`, `sunstone2`, …):
+
+```bash
+# macOS: Apple's /usr/bin/ssh-keygen can't drive FIDO keys — use Homebrew openssh.
+brew install openssh
+/opt/homebrew/bin/ssh-keygen -t ed25519-sk -O resident \
+  -O application=ssh:sunstone-release -f ~/.ssh/id_ed25519_sk_sunstoneN
+
+git config --local gpg.format ssh
+git config --local gpg.ssh.program /opt/homebrew/bin/ssh-keygen
+git config --local user.signingkey ~/.ssh/id_ed25519_sk_sunstoneN
+git config --local tag.gpgsign true
+git config --local commit.gpgsign false      # only tags are signed, not commits
+```
+
+Then add the public key as a line in `.github/allowed_signers`
+(`* namespaces="git" <type> <base64>`) and upload it to GitHub as a **Signing
+Key**. Enroll a second YubiKey the same way for backup.
 
 ## Shipping to the fleet
 
