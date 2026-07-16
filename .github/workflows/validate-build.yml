@@ -13,6 +13,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # The project targets macOS 26 and uses macOS 26 AuthenticationServices
