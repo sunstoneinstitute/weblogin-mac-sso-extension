@@ -4,6 +4,12 @@ from mock_idp.app import create_app
 
 
 @pytest.fixture
+def anyio_backend():
+    # Async tests are marked with pytest.mark.anyio; run them on asyncio only.
+    return "asyncio"
+
+
+@pytest.fixture
 def app():
     return create_app(issuer="https://idp.test/realms/test", audience="psso-aud")
 

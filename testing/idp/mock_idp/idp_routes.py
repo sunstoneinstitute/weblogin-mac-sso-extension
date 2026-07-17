@@ -1,6 +1,8 @@
 from __future__ import annotations
+import asyncio
 import uuid
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 from .faults import FaultKind
 
 router = APIRouter()
@@ -13,10 +15,6 @@ async def nonce(request: Request):
     faults = request.app.state.faults
     request.app.state.last_nonce = BAD_NONCE if faults.consume(FaultKind.BAD_NONCE) else str(uuid.uuid4())
     return {"nonce": request.app.state.last_nonce}
-
-
-import asyncio
-from fastapi.responses import JSONResponse, PlainTextResponse
 
 
 def _mint(request: Request, *, expired: bool = False, malformed: bool = False) -> dict:
@@ -39,6 +37,8 @@ async def certs(request: Request):
 
 
 async def _token(request: Request):
+    # Fault kinds are checked independently, so arming several at once makes them
+    # all fire on the same request (e.g. timeout then 500), not on separate calls.
     faults = request.app.state.faults
     if faults.consume(FaultKind.TIMEOUT):
         await asyncio.sleep(60)

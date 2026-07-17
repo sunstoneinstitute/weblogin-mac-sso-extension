@@ -42,11 +42,6 @@ import pytest
 pytestmark = pytest.mark.anyio
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 async def test_certs_endpoint_serves_jwks(client):
     r = await client.get("/protocol/openid-connect/certs")
     assert r.status_code == 200
@@ -80,6 +75,16 @@ async def test_expired_id_token_fault(client):
     r = await client.post("/psso/token", data={})
     with pytest.raises(jwt.ExpiredSignatureError):
         key = jwt.PyJWK.from_dict((await client.get("/protocol/openid-connect/certs")).json()["keys"][0]).key
+        jwt.decode(r.json()["id_token"], key=key, algorithms=["RS256"], audience="psso-aud")
+
+
+async def test_malformed_id_token_fault(client):
+    import jwt
+    await client.post("/control/fault", json={"type": "malformed_id_token", "times": 1})
+    r = await client.post("/psso/token", data={})
+    key = jwt.PyJWK.from_dict((await client.get("/protocol/openid-connect/certs")).json()["keys"][0]).key
+    # Signature is corrupted, so verification must reject the token.
+    with pytest.raises(jwt.InvalidTokenError):
         jwt.decode(r.json()["id_token"], key=key, algorithms=["RS256"], audience="psso-aud")
 
 

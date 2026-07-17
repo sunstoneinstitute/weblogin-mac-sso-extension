@@ -10,6 +10,7 @@ def create_app(*, issuer: str, audience: str) -> FastAPI:
     app.state.signer = Signer(issuer=issuer, audience=audience)
     app.state.faults = FaultRegistry()
     app.state.requests = []  # list[dict]
+    app.state.last_nonce = None  # last nonce issued by /psso/nonce
 
     @app.middleware("http")
     async def record(request: Request, call_next):

@@ -3,16 +3,14 @@ import pytest
 pytestmark = pytest.mark.anyio
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 async def test_requests_recorded(client):
     await client.get("/psso/nonce")
     r = await client.get("/control/requests")
     paths = [e["path"] for e in r.json()]
     assert "/psso/nonce" in paths
+    # /control/* traffic must be excluded from the recorder (the request that
+    # reads the log must not appear in it).
+    assert "/control/requests" not in paths
 
 
 async def test_reset_clears_requests_and_faults(client):

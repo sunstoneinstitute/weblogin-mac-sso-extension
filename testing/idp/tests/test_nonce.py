@@ -4,11 +4,6 @@ import pytest
 pytestmark = pytest.mark.anyio
 
 
-@pytest.fixture
-def anyio_backend():
-    return "asyncio"
-
-
 async def test_nonce_is_uuid(client):
     r = await client.get("/psso/nonce")
     assert r.status_code == 200
