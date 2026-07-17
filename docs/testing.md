@@ -29,9 +29,65 @@ the mock IdP / Keycloak stack the extension talks to.
 - A **signed test build of the extension**. The golden image bakes in a real
   `.mobileconfig` referencing a specific code-signing team; whichever build you
   install must be signed by the team you put in `golden.env`'s `TEAM_ID` (see
-  §5–6) or the extension won't load.
+  §6–7) or the extension won't load.
 
-## 3. Creating the golden image
+## 3. The APNs push certificate
+
+The disposable nanomdm needs one Apple **MDM push certificate** (`push.pem` +
+its private key `push.key`, in `testing/golden/nanomdm/secrets/`) to complete
+UAMDM enrollment during the bake: nanomdm derives the enrollment profile's
+`Topic` from this cert and uses it to send the wake-up push that makes the VM
+fetch the `InstallProfile` command. It is a **bake-only** input — per-test
+clones never push over APNs (§8), and the profile's `AuthenticationMethod` is
+`Password`.
+
+An APNs MDM push certificate is the same kind of certificate every Apple MDM
+uses to wake managed devices — it is issued by the **Apple Push Certificates
+Portal** (<https://identity.apple.com>) and bound to a *topic*, not to any one
+server. So there are two ways to obtain the `push.pem` / `push.key` pair.
+
+### Option A — reuse the push cert your org's MDM already has (recommended)
+
+If your organization already operates an Apple MDM (Jamf, Kandji, Mosyle,
+Fleet, Intune, a MicroMDM/nanomdm deployment, …), it already holds a push
+certificate of exactly this kind. Reusing it is the pragmatic choice for a
+disposable bake:
+
+- Copy the MDM's APNs **certificate *and* its matching private key** into
+  `testing/golden/nanomdm/secrets/` as `push.pem` and `push.key`. You need both
+  halves — the key is the one generated for the CSR Apple signed, and most MDMs
+  cannot hand it back after the fact, so export it wherever it was created.
+- nanomdm auto-derives the `Topic` from the cert, so the baked enrollment
+  profile simply carries that cert's topic. That's fine.
+- **No cross-talk with your production fleet.** MDM pushes are addressed per
+  device (via the push-magic token each device sends in its `TokenUpdate`), so
+  a bake push only wakes the test VM that checked in to nanomdm — it can never
+  reach a production device just because they share a topic.
+- The only shared thing is the certificate, hence its **renewal fate**:
+  renewing or revoking it in one place affects the other. Acceptable for a
+  disposable bake — just don't point production renewal tooling at these copies.
+
+### Option B — mint a dedicated cert
+
+Prefer this only if you'd rather keep test infrastructure from touching
+production signing material. The Portal will only accept a CSR that has been
+signed by an Apple-approved MDM **vendor** certificate, so unless you are an
+approved vendor yourself you need some MDM tool to sign the CSR for you:
+
+1. Use your MDM's "generate/renew APNs certificate" workflow (e.g.
+   `fleetctl generate mdm-apple`, MicroMDM's `mdmctl`, or your vendor's
+   equivalent) to produce a **vendor-signed CSR** and keep the **private key**
+   it generates.
+2. Upload the signed CSR to the Apple Push Certificates Portal
+   (<https://identity.apple.com>), signed in with the Apple ID that should own
+   the cert, and download the issued `.pem`.
+3. Place the downloaded `.pem` as `secrets/push.pem` and the private key from
+   step 1 as `secrets/push.key`.
+
+Either way both files are **gitignored** (`testing/golden/.gitignore`); only
+`secrets/.gitkeep` is tracked. Never commit the cert or key.
+
+## 4. Creating the golden image
 
 Maintainer-run, occasional — not part of the per-test loop.
 
@@ -47,7 +103,7 @@ local nanomdm via UAMDM, push the PSSO profile as an `InstallProfile` command,
 shut the VM down, and `tart push` the result. See `make-golden.sh`'s own
 header comment and `testing/golden/README.md` for the exact step list.
 
-## 4. Pushing to ghcr.io
+## 5. Pushing to ghcr.io
 
 `make-golden.sh` pushes automatically at the end of a full bake, to
 `${GOLDEN_REMOTE}` = `ghcr.io/<org>/weblogin-psso-test-vm:<macos-ver>` (from
@@ -76,7 +132,7 @@ that in place, consumers only ever run:
 tart pull ghcr.io/<org>/weblogin-psso-test-vm:<macos-ver>
 ```
 
-## 5. Configuring TEAM_ID / ClientID / Issuer / Audience
+## 6. Configuring TEAM_ID / ClientID / Issuer / Audience
 
 Four keys in `testing/golden/golden.env` land in the `com.apple.extensiblesso`
 payload of the generated `.mobileconfig` (see
@@ -120,7 +176,7 @@ per-IdP / per-deployment — they describe which OIDC client and issuer the
 extension is authenticating against, which is an IdP-side concern, not a
 code-signing one.
 
-## 6. Verifying
+## 7. Verifying
 
 ```bash
 cd testing/idp && docker compose up -d mock-idp   # host-side mock IdP, if not already up
@@ -140,7 +196,7 @@ check simply skips its `PASS:` line and lets the script continue; read the
 per-check output rather than trusting only the final `ALL CHECKS PASSED`
 banner.
 
-## 7. Open items / caveats
+## 8. Open items / caveats
 
 - `BASE_IMAGE` in `golden.env` is pinned to `:latest`; pin to a specific digest
   before treating a baked image as reproducible.
