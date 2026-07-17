@@ -12,3 +12,18 @@ services:
       - ./certs:/certs:ro
     ports:
       - "0.0.0.0:8443:8443"   # bound to 0.0.0.0 so the guest VM can reach it
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm", "--https-port=8444"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "admin"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "admin"
+      KC_HTTPS_CERTIFICATE_FILE: "/certs/idp.test.crt"
+      KC_HTTPS_CERTIFICATE_KEY_FILE: "/certs/idp.test.key"
+      KC_HOSTNAME: "idp.test"
+    volumes:
+      - ./certs:/certs:ro
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "0.0.0.0:8444:8444"
