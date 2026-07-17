@@ -12,9 +12,23 @@ install_helpers() {
   else
     echo "WARN: no ~/.ssh/id_ed25519.pub on host; skipping key install" >&2
   fi
-  # cliclick (drives the login sheet in Plan 3) + Tart guest agent, via preinstalled brew.
-  guest_exec "brew install cliclick || true"
-  guest_exec "brew install cirruslabs/cli/tart-guest-agent || true"
+  # Homebrew is preinstalled on the cirruslabs base at /opt/homebrew, but its shellenv is
+  # only wired into ~/.zprofile (login shells). guest_exec runs non-interactive, non-login
+  # SSH commands, which source ~/.zshenv only — so persist brew's shellenv there to put
+  # brew (and everything it installs: cliclick, tart-guest-agent) on PATH for every
+  # subsequent guest_exec, including the cliclick call in enroll.sh.
+  # shellcheck disable=SC2016  # $(...) is deliberately literal — evaluated in the guest.
+  guest_exec 'grep -q "brew shellenv" ~/.zshenv 2>/dev/null || \
+    echo '\''eval "$(/opt/homebrew/bin/brew shellenv)"'\'' >> ~/.zshenv'
+  # cliclick drives the UAMDM approval sheet (enroll.sh); homebrew/core, fail loud on error.
+  guest_exec "brew install cliclick"
+  # tart-guest-agent ships preinstalled on the base; reinstall only if a future base drops
+  # it (third-party tap, so bypass the interactive trust gate on that fallback path).
+  guest_exec "command -v tart-guest-agent >/dev/null || \
+    HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew install cirruslabs/cli/tart-guest-agent"
+  # Never ship a golden image with the helpers missing — fail the bake instead.
+  guest_exec "command -v cliclick >/dev/null && command -v tart-guest-agent >/dev/null" \
+    || { echo "FATAL: helper tools missing after install (cliclick/tart-guest-agent)" >&2; return 1; }
 }
 
 trust_test_ca() {
