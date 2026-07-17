@@ -1,0 +1,34 @@
+# Disposable MDM used ONLY during the golden-image bake. Not a per-test dependency.
+# Binds 0.0.0.0 so the guest VM can reach the SCEP/MDM endpoints over Tart NAT.
+services:
+  scep:
+    image: micromdm/scep:v2.1.0            # OPEN ITEM: confirm tag against upstream
+    command:
+      - "-allowrenew=0"
+      - "-challenge=testchallenge"
+      - "-depot=/depot"
+      - "-port=8080"
+    volumes:
+      - ./secrets/scep-depot:/depot
+    ports:
+      - "0.0.0.0:8080:8080"
+
+  nanomdm:
+    image: ghcr.io/micromdm/nanomdm:latest  # OPEN ITEM: confirm image + flags against upstream
+    command:
+      - "-api=${NANOMDM_API_KEY}"
+      - "-cert-header=X-Forwarded-Client-Cert"
+      - "-push-cert=/secrets/push.pem"
+      - "-push-key=/secrets/push.key"
+      - "-storage=file"
+      - "-storage-dsn=/data"
+      - "-listen=0.0.0.0:9000"
+    environment:
+      NANOMDM_API_KEY: "${NANOMDM_API_KEY}"
+    volumes:
+      - ./secrets:/secrets:ro
+      - ./secrets/nanomdm-data:/data
+    ports:
+      - "0.0.0.0:9000:9000"
+    depends_on:
+      - scep
