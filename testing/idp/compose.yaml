@@ -1,0 +1,14 @@
+services:
+  mock-idp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    environment:
+      IDP_HOST: "0.0.0.0"
+      IDP_PORT: "8443"
+      IDP_TLS_CERT: "/certs/idp.test.crt"
+      IDP_TLS_KEY: "/certs/idp.test.key"
+    volumes:
+      - ./certs:/certs:ro
+    ports:
+      - "0.0.0.0:8443:8443"   # bound to 0.0.0.0 so the guest VM can reach it
