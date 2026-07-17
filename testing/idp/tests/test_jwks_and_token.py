@@ -35,3 +35,55 @@ def test_jwks_has_kid_matching_token_header():
     tok = s.mint_id_token(sub="x", nonce="n", groups=[])
     header = jwt.get_unverified_header(tok)
     assert header["kid"] == s.jwks()["keys"][0]["kid"]
+
+
+import pytest
+
+pytestmark = pytest.mark.anyio
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+async def test_certs_endpoint_serves_jwks(client):
+    r = await client.get("/protocol/openid-connect/certs")
+    assert r.status_code == 200
+    assert r.json()["keys"][0]["kty"] == "RSA"
+
+
+async def test_token_returns_signed_id_token(client):
+    r = await client.post("/psso/token", data={"grant_type": "client_credentials"})
+    body = r.json()
+    assert set(body) >= {"access_token", "refresh_token", "id_token", "expires_in"}
+    header = __import__("jwt").get_unverified_header(body["id_token"])
+    assert header["alg"] == "RS256"
+
+
+async def test_token_500_fault(client):
+    await client.post("/control/fault", json={"type": "token_500", "times": 1})
+    r = await client.post("/psso/token", data={})
+    assert r.status_code == 500
+
+
+async def test_token_bad_json_fault(client):
+    await client.post("/control/fault", json={"type": "token_bad_json", "times": 1})
+    r = await client.post("/psso/token", data={})
+    assert r.headers["content-type"].startswith("text/plain")
+    assert r.text == "not json{{{"
+
+
+async def test_expired_id_token_fault(client):
+    import jwt
+    await client.post("/control/fault", json={"type": "expired_id_token", "times": 1})
+    r = await client.post("/psso/token", data={})
+    with pytest.raises(jwt.ExpiredSignatureError):
+        key = jwt.PyJWK.from_dict((await client.get("/protocol/openid-connect/certs")).json()["keys"][0]).key
+        jwt.decode(r.json()["id_token"], key=key, algorithms=["RS256"], audience="psso-aud")
+
+
+async def test_enroll_endpoints_ok(client):
+    for path in ("/psso/enroll", "/psso/userenroll"):
+        r = await client.post(path, json={})
+        assert r.json() == {"status": "ok"}
