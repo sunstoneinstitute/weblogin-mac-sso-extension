@@ -1,0 +1,4 @@
+nanomdm/secrets/
+nanomdm/.env
+*.mobileconfig
+*.log
