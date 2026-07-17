@@ -8,9 +8,9 @@ preflight() {
   command -v sshpass >/dev/null || { echo "MISSING: sshpass (brew install sshpass)" >&2; ok=0; }
   command -v cliclick >/dev/null || echo "WARN: cliclick not on host (only needed if driving VNC from host)" >&2
 
-  # Plan 1 dependency: the disposable test CA.
-  if [[ ! -f "${CA_CRT}" ]]; then
-    echo "MISSING: ${CA_CRT} — run Plan 1's testing/idp/gen-test-ca.sh first" >&2
+  # Plan 1 dependency: the disposable test CA (cert + key; the key signs the MDM TLS cert).
+  if [[ ! -f "${CA_CRT}" || ! -f "${CA_CRT%/*}/ca.key" ]]; then
+    echo "MISSING: ${CA_CRT} (+ ca.key) — run Plan 1's testing/idp/gen-test-ca.sh first" >&2
     ok=0
   fi
   # GATED APNs push cert.

@@ -7,7 +7,20 @@
 # screen/OS-version dependent — see OPEN ITEM; verify_enrolled() below is the real gate.
 # shellcheck shell=bash
 
-nanomdm_up()   { ( cd nanomdm && cp -n .env.example .env 2>/dev/null; docker compose up -d ); }
+# Mint the disposable MDM certs, build the local scep image, bring the stack up, and
+# upload the APNs push cert (nanomdm takes it via its API, not a CLI flag).
+nanomdm_up() {
+  ( cd nanomdm && cp -n .env.example .env 2>/dev/null; ./gen-mdm-certs.sh && \
+    docker compose up -d --build )
+  local deadline=$((SECONDS + 60))
+  until curl -sf "${NANOMDM_URL}/version" >/dev/null 2>&1; do
+    (( SECONDS < deadline )) || { echo "nanomdm API did not come up" >&2; return 1; }
+    sleep 2
+  done
+  cat nanomdm/secrets/push.pem nanomdm/secrets/push.key \
+    | curl -sf -u "nanomdm:${NANOMDM_API_KEY}" -T - "${NANOMDM_URL}/v1/pushcert" >/dev/null \
+    && echo "uploaded APNs push cert to nanomdm"
+}
 nanomdm_down() { ( cd nanomdm && docker compose down -v ); }
 
 # The APNs topic nanomdm serves under is the UID value in the push cert subject,
@@ -18,8 +31,10 @@ push_topic() {
 }
 
 # Build the manual-enrollment .mobileconfig: SCEP identity + MDM payload -> nanomdm.
+# URLs use idp.test (mapped to the NAT gateway in the guest's /etc/hosts by provision),
+# so the MDM server's TLS cert (CN=idp.test, signed by the trusted test CA) validates.
 generate_enrollment_profile() {
-  local gw="$1" out="enroll.mobileconfig" topic; topic="$(push_topic)"
+  local out="enroll.mobileconfig" topic; topic="$(push_topic)"
   cat > "$out" <<ENROLL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -36,7 +51,7 @@ generate_enrollment_profile() {
       <key>PayloadIdentifier</key><string>${EXT_BUNDLE_ID}.enroll.scep</string>
       <key>PayloadUUID</key><string>$(uuidgen)</string>
       <key>PayloadContent</key><dict>
-        <key>URL</key><string>http://${gw}:8080/scep</string>
+        <key>URL</key><string>http://${IDP_HOST}:8080/scep</string>
         <key>Challenge</key><string>testchallenge</string>
         <key>Key Usage</key><integer>5</integer>
         <key>Keysize</key><integer>2048</integer>
@@ -50,8 +65,8 @@ generate_enrollment_profile() {
       <key>PayloadUUID</key><string>$(uuidgen)</string>
       <key>IdentityCertificateUUID</key><string>${EXT_BUNDLE_ID}.enroll.scep</string>
       <key>Topic</key><string>${topic}</string>
-      <key>ServerURL</key><string>http://${gw}:9000/mdm</string>
-      <key>CheckInURL</key><string>http://${gw}:9000/checkin</string>
+      <key>ServerURL</key><string>https://${IDP_HOST}:9000/mdm</string>
+      <key>CheckInURL</key><string>https://${IDP_HOST}:9000/checkin</string>
       <key>AccessRights</key><integer>8191</integer>
     </dict>
   </array>
@@ -154,9 +169,8 @@ MSG
 }
 
 enroll_guest() {
-  local gw; gw="$(guest_exec "route -n get default | awk '/gateway/{print \$2}'")"
   nanomdm_up
-  local prof; prof="$(generate_enrollment_profile "$gw")"
+  local prof; prof="$(generate_enrollment_profile)"
   guest_push "$prof" "/tmp/${prof}"
   # Stage the profile (Tahoe `profiles install` is gone); it then appears under
   # System Settings > General > Device Management awaiting the manual approval below.
