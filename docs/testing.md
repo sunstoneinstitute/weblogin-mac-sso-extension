@@ -110,19 +110,18 @@ header comment and `testing/golden/README.md` for the exact step list.
 `ORG` and `MACOS_VER` in `golden.env`). You need to be authenticated to GHCR
 first with a GitHub PAT that has `write:packages`.
 
-**OPEN ITEM — confirm exact syntax.** Two plausible ways to authenticate `tart`
-against GHCR:
+`tart login` takes the password on stdin (confirmed via `tart login --help`;
+there is no `--password` flag):
 
 ```bash
-# Option A (tart-native, if supported):
-tart login ghcr.io --username <github-user> --password <PAT>
+# With a GitHub PAT (needs write:packages):
+echo "$PAT" | tart login ghcr.io --username <github-user> --password-stdin
 
-# Option B (via the shared Docker credential store, which tart may reuse):
-echo "$PAT" | docker login ghcr.io -u <github-user> --password-stdin
+# Or reuse your gh CLI session instead of minting a PAT (needs the
+# read:packages/write:packages scopes — see `gh auth status`, and
+# `gh auth refresh -h github.com -s read:packages,write:packages` if missing):
+gh auth token | tart login ghcr.io --username <github-user> --password-stdin
 ```
-
-Confirm the correct form against current `tart` docs/`tart login --help`
-before relying on it — this doc does not assert which one is right.
 
 Once pushed, make the package readable by consumers: either set it **public**
 in the GHCR package settings, or grant the org's members **read** access. With
