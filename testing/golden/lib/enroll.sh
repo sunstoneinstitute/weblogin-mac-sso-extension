@@ -10,10 +10,11 @@
 nanomdm_up()   { ( cd nanomdm && cp -n .env.example .env 2>/dev/null; docker compose up -d ); }
 nanomdm_down() { ( cd nanomdm && docker compose down -v ); }
 
-# The APNs topic nanomdm serves under is the UID in the push cert subject.
+# The APNs topic nanomdm serves under is the UID value in the push cert subject,
+# e.g. subject=UID=com.apple.mgmt.External.<uuid>, CN=APSP:<uuid>, C=NO
 push_topic() {
   openssl x509 -in nanomdm/secrets/push.pem -noout -subject \
-    | tr ',/' '\n' | awk -F= '/UID/{print $2}' | tr -d ' '
+    | sed -n 's/.*UID=\([^,/]*\).*/\1/p'
 }
 
 # Build the manual-enrollment .mobileconfig: SCEP identity + MDM payload -> nanomdm.
@@ -81,7 +82,29 @@ CMD
 }
 
 verify_enrolled() {
-  guest_exec "profiles status -type enrollment" | tee /dev/stderr | grep -q "User Approved"
+  guest_exec "profiles status -type enrollment" 2>/dev/null | grep -q "User Approved"
+}
+
+# Tahoe removed CLI profile installs and gates synthetic clicks (cliclick) behind
+# Accessibility TCC, which nothing can grant on a headless SSH bake. So the maintainer
+# approves the staged profile once via the VNC console; this polls until it lands.
+wait_for_manual_approval() {
+  local deadline=$((SECONDS + MDM_APPROVE_TIMEOUT)) vnc
+  vnc="$(grep -Eo 'vnc://[^[:space:]]+' /tmp/tart-golden.log 2>/dev/null | tail -1)"
+  cat >&2 <<MSG
+
+=== MANUAL STEP: approve MDM enrollment on the guest ===
+Connect a VNC viewer to the running guest:
+  ${vnc:-<VNC URL not found; check /tmp/tart-golden.log>}
+Then: System Settings > General > Device Management > double-click
+  "Weblogin PSSO Test MDM Enrollment" > Install > Install > password: ${GUEST_PASS}
+Waiting up to $((MDM_APPROVE_TIMEOUT / 60)) min for user-approved enrollment...
+MSG
+  while (( SECONDS < deadline )); do
+    verify_enrolled && { echo "MDM enrollment user-approved" >&2; return 0; }
+    sleep 5
+  done
+  echo "timed out waiting for manual MDM approval" >&2; return 1
 }
 
 enroll_guest() {
@@ -89,10 +112,10 @@ enroll_guest() {
   nanomdm_up
   local prof; prof="$(generate_enrollment_profile "$gw")"
   guest_push "$prof" "/tmp/${prof}"
-  guest_exec "sudo profiles install -type configuration -path /tmp/${prof}"
-  # GUI approval click (System Settings > Device Management > Approve). OPEN ITEM: coords.
+  # Stage the profile (Tahoe `profiles install` is gone); it then appears under
+  # System Settings > General > Device Management awaiting the manual approval below.
+  guest_exec "open /tmp/${prof}"
   guest_exec "open 'x-apple.systempreferences:com.apple.preferences.configurationprofiles'"
-  guest_exec "cliclick w:3000 c:640,480 || true"   # placeholder click; verify_enrolled is the gate
-  verify_enrolled || { echo "UAMDM not user-approved — approve manually via VNC" >&2; return 1; }
+  wait_for_manual_approval || return 1
   push_psso_profile "$(guest_udid)"
 }

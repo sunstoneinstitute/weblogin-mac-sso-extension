@@ -16,11 +16,12 @@ install_helpers() {
   # only wired into ~/.zprofile (login shells). guest_exec runs non-interactive, non-login
   # SSH commands, which source ~/.zshenv only — so persist brew's shellenv there to put
   # brew (and everything it installs: cliclick, tart-guest-agent) on PATH for every
-  # subsequent guest_exec, including the cliclick call in enroll.sh.
+  # subsequent guest_exec that needs them.
   # shellcheck disable=SC2016  # $(...) is deliberately literal — evaluated in the guest.
   guest_exec 'grep -q "brew shellenv" ~/.zshenv 2>/dev/null || \
     echo '\''eval "$(/opt/homebrew/bin/brew shellenv)"'\'' >> ~/.zshenv'
-  # cliclick drives the UAMDM approval sheet (enroll.sh); homebrew/core, fail loud on error.
+  # cliclick drives the PSSO login sheet in the Plan 3 test harness; homebrew/core, fail loud.
+  # (UAMDM approval is a manual VNC step — see enroll.sh — so cliclick isn't used at bake time.)
   guest_exec "brew install cliclick"
   # tart-guest-agent ships preinstalled on the base; reinstall only if a future base drops
   # it (third-party tap, so bypass the interactive trust gate on that fallback path).

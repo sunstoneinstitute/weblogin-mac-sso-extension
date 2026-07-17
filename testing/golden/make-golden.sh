@@ -24,7 +24,7 @@ Golden-image bake plan:
   4. wait_for_ssh
   5. generate PSSO profile (BaseURL=${PSSO_BASE_URL})
   6. provision_guest      (ssh key, cliclick, guest-agent, trust CA, idp.test -> gateway)
-  7. enroll_guest         (nanomdm up, UAMDM approve, push InstallProfile)
+  7. enroll_guest         (nanomdm up, stage profile, manual UAMDM approve via VNC, push InstallProfile)
   8. shutdown + tart stop
   9. tart push            ${GOLDEN_LOCAL} -> ${GOLDEN_REMOTE}
  10. cleanup              (tart delete ${GOLDEN_LOCAL}, nanomdm_down)
