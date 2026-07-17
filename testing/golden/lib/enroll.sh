@@ -60,11 +60,13 @@ ENROLL
   echo "$out"
 }
 
-# Queue an InstallProfile command carrying the PSSO profile, then push so the guest checks in.
-push_psso_profile() {
-  local udid="$1" b64 cmd_uuid; cmd_uuid="$(uuidgen)"
-  b64="$(base64 < psso-profile.mobileconfig | tr -d '\n')"
-  cat > install-profile-command.plist <<CMD
+# Queue an InstallProfile command carrying the given .mobileconfig, then push so the
+# guest checks in and installs it. Command plist name is derived from the profile.
+push_profile() {
+  local udid="$1" path="$2" b64 cmd_uuid cmd; cmd_uuid="$(uuidgen)"
+  cmd="install-$(basename "${path%.mobileconfig}").plist"
+  b64="$(base64 < "$path" | tr -d '\n')"
+  cat > "$cmd" <<CMD
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -76,9 +78,53 @@ push_psso_profile() {
 </dict></plist>
 CMD
   curl -sf -u "nanomdm:${NANOMDM_API_KEY}" \
-    "${NANOMDM_URL/9000/9000}/v1/enqueue/${udid}?push=1" \
-    -T install-profile-command.plist >/dev/null
-  echo "enqueued InstallProfile for ${udid}"
+    "${NANOMDM_URL}/v1/enqueue/${udid}?push=1" -T "$cmd" >/dev/null
+  echo "enqueued InstallProfile ($(basename "$path")) for ${udid}"
+}
+
+# Build a PPPC (Privacy Preferences Policy Control) profile that pre-authorizes cliclick
+# for Accessibility, so the Plan 3 harness can post synthetic clicks over SSH without a TCC
+# prompt. A PPPC grant only takes effect when the profile is delivered via MDM (below).
+# The CodeRequirement is read from the actual installed binary at bake time so it matches
+# whatever cliclick provision installed (Homebrew bottles are ad-hoc signed, so the
+# requirement is cdhash-based and version-specific).
+# Note: only Accessibility is granted — ScreenCapture is not reliably PPPC-grantable, so
+# in-guest screenshots still need a separate mechanism.
+generate_pppc_profile() {
+  local out="pppc-profile.mobileconfig" bin="/opt/homebrew/bin/cliclick" req
+  # codesign prints the requirement as "designated => …" (sometimes "# designated => …").
+  req="$(guest_exec "codesign -dr - '$bin' 2>&1" | sed -n 's/.*designated => //p')"
+  [[ -n "$req" ]] || { echo "could not read cliclick code requirement" >&2; return 1; }
+  cat > "$out" <<PPPC
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>PayloadType</key><string>Configuration</string>
+  <key>PayloadVersion</key><integer>1</integer>
+  <key>PayloadIdentifier</key><string>${EXT_BUNDLE_ID}.pppc</string>
+  <key>PayloadUUID</key><string>$(uuidgen)</string>
+  <key>PayloadDisplayName</key><string>Weblogin PSSO Test Automation (cliclick)</string>
+  <key>PayloadContent</key><array>
+    <dict>
+      <key>PayloadType</key><string>com.apple.TCC.configuration-profile-policy</string>
+      <key>PayloadVersion</key><integer>1</integer>
+      <key>PayloadIdentifier</key><string>${EXT_BUNDLE_ID}.pppc.tcc</string>
+      <key>PayloadUUID</key><string>$(uuidgen)</string>
+      <key>Services</key><dict>
+        <key>Accessibility</key><array>
+          <dict>
+            <key>Identifier</key><string>${bin}</string>
+            <key>IdentifierType</key><string>path</string>
+            <key>CodeRequirement</key><string>${req}</string>
+            <key>Authorization</key><string>Allow</string>
+          </dict>
+        </array>
+      </dict>
+    </dict>
+  </array>
+</dict></plist>
+PPPC
+  echo "$out"
 }
 
 verify_enrolled() {
@@ -117,5 +163,9 @@ enroll_guest() {
   guest_exec "open /tmp/${prof}"
   guest_exec "open 'x-apple.systempreferences:com.apple.preferences.configurationprofiles'"
   wait_for_manual_approval || return 1
-  push_psso_profile "$(guest_udid)"
+  local udid; udid="$(guest_udid)"
+  push_profile "$udid" psso-profile.mobileconfig
+  # Ship the golden image with cliclick pre-authorized for unattended Plan 3 automation.
+  local pppc; pppc="$(generate_pppc_profile)" || return 1
+  push_profile "$udid" "$pppc"
 }
