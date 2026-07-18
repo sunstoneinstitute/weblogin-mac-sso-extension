@@ -1,0 +1,24 @@
+// Sunstone Institute deployment overrides for the Weblogin SSO app + extension.
+//
+// This file is git-ignored by upstream's .gitignore (see Config/Local.xcconfig.example),
+// and force-added on the `sunstone` fork branch so CI/builds are reproducible.
+// Because upstream never tracks it, `git rebase upstream/main` never conflicts on it.
+
+// --- Identifiers ---
+APP_BUNDLE_ID = ai.sunstoneinstitute.psso-extension
+// -> extension is ai.sunstoneinstitute.psso-extension.ssoe (SSOE_BUNDLE_ID default)
+SSO_HOST      = auth.sunstoneinstitute.ai
+// Must be registered in the Apple Developer portal and enabled on BOTH App IDs
+// (app + .ssoe) before the Developer ID provisioning profiles are created.
+APP_GROUP_ID  = group.ai.sunstoneinstitute.psso
+
+// --- Code signing: Developer ID + notarization (see the SSO Phase-1 plan) ---
+SIGNING_STYLE    = Manual
+SIGNING_TEAM     = HZ76GWS9YM
+SIGNING_IDENTITY = Developer ID Application
+// These must match the names of the Developer ID provisioning profiles created in
+// the Apple Developer portal for the two App IDs, each with the Associated Domains
+// capability enabled. Associated Domains is a managed capability, so the profile is
+// embedded and checked at every launch — track its expiry (see the plan doc).
+APP_PROVISIONING_PROFILE  = Sunstone PSSO App (Developer ID)
+SSOE_PROVISIONING_PROFILE = Sunstone PSSO Extension (Developer ID)
