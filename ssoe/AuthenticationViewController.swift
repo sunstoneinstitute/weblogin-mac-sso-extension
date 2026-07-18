@@ -453,9 +453,9 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
                         let saml_response = httpBody!.split(separator: "&")
                         
                         for param in saml_response {
-                            let key_value = param.split(separator: "=",maxSplits: 1)
-                            let paramName = String(key_value[0])
-                            let rawValue = String(key_value[1])
+                            let key_value = param.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+                            guard let paramName = key_value.first.map(String.init) else { continue }
+                            let rawValue = key_value.count > 1 ? String(key_value[1]) : ""
                             let decoded = rawValue.removingPercentEncoding ?? rawValue
                             let escaped = htmlEscape(decoded)
                             let line = "<input type=\"hidden\" name=\"\(paramName)\" value=\"\(escaped)\">"
