@@ -39,7 +39,8 @@ class ViewController: NSViewController {
      */
     
     @IBAction func turnOffSwitchToggled (_ sender: NSSwitch) {
-        let sharedDefaults = UserDefaults(suiteName: "group.no.uio.weblogin")!
+        let appGroupID = Bundle.main.object(forInfoDictionaryKey: "AppGroupID") as? String ?? "group.no.uio.weblogin"
+        let sharedDefaults = UserDefaults(suiteName: appGroupID)!
         let isOff = (sender.state == .off)
         sharedDefaults.set(isOff, forKey: "disable_sso")
         sharedDefaults.synchronize()

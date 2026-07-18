@@ -1,3 +1,8 @@
+# Local, per-deployer build configuration (bundle id, host, signing) — see
+# Config/Local.xcconfig.example. Kept out of git so each deployer's values and
+# the fork's don't collide with upstream.
+Config/Local.xcconfig
+
 # Xcode
 #
 # gitignore contributors: remember to update Global/Xcode.gitignore, Objective-C.gitignore & Swift.gitignore
