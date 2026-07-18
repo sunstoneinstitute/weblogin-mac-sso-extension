@@ -30,7 +30,7 @@ Canonical patterns already in the repo — copy one when you add a new secret-co
 | Material | Gitignored real path | Committed template / generator |
 |---|---|---|
 | Xcode signing config | `Config/Local.xcconfig` | `Config/Local.xcconfig.example` (+ `Config/Deployment.xcconfig` defaults) |
-| APNs push cert + MDM env | `testing/golden/nanomdm/secrets/`, `testing/golden/nanomdm/.env` | `nanomdm/.env.example`, `nanomdm/secrets/.gitkeep` |
+| APNs push cert + MDM env | `testing/golden/nanomdm/secrets/`, `testing/golden/nanomdm/.env` | `nanomdm/.env.example` (secrets dir created at bake time) |
 | Test root CA + keys | `testing/idp/certs/` | `testing/idp/gen-test-ca.sh` |
 
 When you add a step that needs a cert or secret:
