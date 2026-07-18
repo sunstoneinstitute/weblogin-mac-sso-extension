@@ -1,8 +1,9 @@
 # Weblogin macOS PSSO extension — agent instructions
 
-A macOS Platform SSO (PSSO) app + Safari/authorization extension for Weblogin. Builds are
-driven by Xcode with deployment values factored into `Config/*.xcconfig`. `testing/` holds
-the VM-based test rig (mock IdP + golden Tart image); see `docs/testing.md` and
+A macOS Platform SSO (PSSO) app + Safari/authorization extension for Weblogin. UiO is
+upstream; the `sunstone` branch is Sunstone Institute's deployment fork. Builds are driven
+by Xcode with deployment values factored into `Config/*.xcconfig`. `testing/` holds the
+VM-based test rig (mock IdP + golden Tart image); see `docs/testing.md` and
 `testing/golden/README.md`.
 
 ## Never commit Developer ID, certificates, or secrets
@@ -37,3 +38,8 @@ When you add a step that needs a cert or secret:
 - commit a `.example`, generator, or `.gitkeep` that documents the expected file(s);
 - make the script read the path from config/env so each deployer supplies their own;
 - never echo secret contents to logs or command output.
+
+Exception, by design: on the `sunstone` fork `Config/Local.xcconfig` is intentionally
+force-added (tracked) so fork CI is reproducible. It carries only non-secret *config*
+(Team ID, identity name, profile names) — never key material. Upstream keeps it gitignored;
+`git rebase upstream/main` therefore never conflicts on it.
