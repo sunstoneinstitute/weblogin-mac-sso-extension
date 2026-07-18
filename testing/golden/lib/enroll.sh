@@ -34,7 +34,10 @@ push_topic() {
 # URLs use idp.test (mapped to the NAT gateway in the guest's /etc/hosts by provision),
 # so the MDM server's TLS cert (CN=idp.test, signed by the trusted test CA) validates.
 generate_enrollment_profile() {
-  local out="enroll.mobileconfig" topic; topic="$(push_topic)"
+  # The MDM payload's IdentityCertificateUUID must equal the SCEP payload's PayloadUUID
+  # (Apple resolves the client identity by UUID, not by PayloadIdentifier), so mint one
+  # UUID and use it for both — otherwise the MDM connection has no client cert to present.
+  local out="enroll.mobileconfig" topic scep_uuid; topic="$(push_topic)"; scep_uuid="$(uuidgen)"
   cat > "$out" <<ENROLL
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -49,7 +52,7 @@ generate_enrollment_profile() {
       <key>PayloadType</key><string>com.apple.security.scep</string>
       <key>PayloadVersion</key><integer>1</integer>
       <key>PayloadIdentifier</key><string>${EXT_BUNDLE_ID}.enroll.scep</string>
-      <key>PayloadUUID</key><string>$(uuidgen)</string>
+      <key>PayloadUUID</key><string>${scep_uuid}</string>
       <key>PayloadContent</key><dict>
         <key>URL</key><string>http://${IDP_HOST}:8080/scep</string>
         <key>Challenge</key><string>testchallenge</string>
@@ -63,11 +66,16 @@ generate_enrollment_profile() {
       <key>PayloadVersion</key><integer>1</integer>
       <key>PayloadIdentifier</key><string>${EXT_BUNDLE_ID}.enroll.mdm</string>
       <key>PayloadUUID</key><string>$(uuidgen)</string>
-      <key>IdentityCertificateUUID</key><string>${EXT_BUNDLE_ID}.enroll.scep</string>
+      <key>IdentityCertificateUUID</key><string>${scep_uuid}</string>
       <key>Topic</key><string>${topic}</string>
+      <!-- nanomdm serves check-in AND commands on one combined endpoint (/mdm); it has no
+           separate /checkin route, so both URLs must point at /mdm. -->
       <key>ServerURL</key><string>https://${IDP_HOST}:9000/mdm</string>
-      <key>CheckInURL</key><string>https://${IDP_HOST}:9000/checkin</string>
+      <key>CheckInURL</key><string>https://${IDP_HOST}:9000/mdm</string>
       <key>AccessRights</key><integer>8191</integer>
+      <!-- Tahoe rejects an MDM payload that doesn't declare user-channel support. -->
+      <key>ServerCapabilities</key>
+      <array><string>com.apple.mdm.per-user-connections</string></array>
     </dict>
   </array>
 </dict></plist>

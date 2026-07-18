@@ -1,8 +1,12 @@
 # Sourced by make-golden.sh. SSH plumbing against the booting guest.
 # shellcheck shell=bash
 
-_ssh() { sshpass -p "${GUEST_PASS}" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$@"; }
-_scp() { sshpass -p "${GUEST_PASS}" scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$@"; }
+# Force password auth only: skip the SSH agent (else e.g. the 1Password agent prompts on
+# every call) and any on-disk keys. sshpass supplies GUEST_PASS.
+_SSH_OPTS=(-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
+  -o PreferredAuthentications=password -o PubkeyAuthentication=no -o IdentityAgent=none)
+_ssh() { sshpass -p "${GUEST_PASS}" ssh "${_SSH_OPTS[@]}" "$@"; }
+_scp() { sshpass -p "${GUEST_PASS}" scp "${_SSH_OPTS[@]}" "$@"; }
 
 guest_ip() { tart ip "${GOLDEN_LOCAL}"; }
 

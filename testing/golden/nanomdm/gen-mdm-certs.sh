@@ -38,10 +38,17 @@ else
     echo "missing test CA at $IDP_CA (run ../../idp/gen-test-ca.sh first)" >&2; exit 1; }
   openssl req -newkey rsa:2048 -nodes -keyout "$MDMC/mdm-server.key" \
     -out "$MDMC/mdm-server.csr" -subj "/CN=idp.test"
+  # Apple's TLS server-cert trust policy (iOS 13 / macOS 10.15+) rejects a leaf that lacks
+  # a serverAuth EKU or sane basicConstraints ("Leaf has invalid basic constraints"), and
+  # caps validity at 398 days for certs issued after 2020-09-01. Mint a compliant leaf.
   openssl x509 -req -in "$MDMC/mdm-server.csr" \
     -CA "$IDP_CA/ca.crt" -CAkey "$IDP_CA/ca.key" -CAcreateserial \
-    -days 3650 -out "$MDMC/mdm-server.crt" \
-    -extfile <(printf "subjectAltName=DNS:idp.test,DNS:localhost,IP:127.0.0.1")
+    -days 397 -out "$MDMC/mdm-server.crt" \
+    -extfile <(printf "%s\n" \
+      "basicConstraints=critical,CA:FALSE" \
+      "keyUsage=critical,digitalSignature,keyEncipherment" \
+      "extendedKeyUsage=serverAuth" \
+      "subjectAltName=DNS:idp.test,DNS:localhost,IP:127.0.0.1")
   rm -f "$MDMC/mdm-server.csr"
   echo "minted MDM server cert: $MDMC/mdm-server.crt"
 fi

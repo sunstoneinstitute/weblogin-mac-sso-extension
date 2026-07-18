@@ -9,6 +9,7 @@ set -a; . ./golden.env; set +a
 
 OUT="${1:-psso-profile.mobileconfig}"
 PAYLOAD_UUID="$(uuidgen)"
+PREFS_UUID="$(uuidgen)"
 PROFILE_UUID="$(uuidgen)"
 
 cat > "$OUT" <<PROFILE
@@ -43,6 +44,35 @@ cat > "$OUT" <<PROFILE
       <key>BaseURL</key><string>${PSSO_BASE_URL}</string>
       <key>Issuer</key><string>${PSSO_ISSUER}</string>
       <key>Audience</key><string>${PSSO_AUDIENCE}</string>
+    </dict>
+    <!-- The extension reads these via CFPreferencesCopyAppValue(key, EXT_BUNDLE_ID)
+         (Helpers.swift / AuthenticationViewController.swift). Keys inside the SSO payload
+         above do NOT reach that domain, so also deliver them as forced managed preferences
+         for the bundle id — these land in /Library/Managed Preferences/<host>/<id>.plist. -->
+    <dict>
+      <key>PayloadType</key><string>com.apple.ManagedClient.preferences</string>
+      <key>PayloadVersion</key><integer>1</integer>
+      <key>PayloadIdentifier</key><string>${EXT_BUNDLE_ID}.psso.prefs</string>
+      <key>PayloadUUID</key><string>${PREFS_UUID}</string>
+      <key>PayloadDisplayName</key><string>Weblogin PSSO Managed Preferences</string>
+      <key>PayloadContent</key>
+      <dict>
+        <key>${EXT_BUNDLE_ID}</key>
+        <dict>
+          <key>Forced</key>
+          <array>
+            <dict>
+              <key>mcx_preference_settings</key>
+              <dict>
+                <key>ClientID</key><string>${PSSO_CLIENT_ID}</string>
+                <key>BaseURL</key><string>${PSSO_BASE_URL}</string>
+                <key>Issuer</key><string>${PSSO_ISSUER}</string>
+                <key>Audience</key><string>${PSSO_AUDIENCE}</string>
+              </dict>
+            </dict>
+          </array>
+        </dict>
+      </dict>
     </dict>
   </array>
 </dict>
