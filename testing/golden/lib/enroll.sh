@@ -10,7 +10,9 @@
 # Mint the disposable MDM certs, build the local scep image, bring the stack up, and
 # upload the APNs push cert (nanomdm takes it via its API, not a CLI flag).
 nanomdm_up() {
-  ( cd nanomdm && cp -n .env.example .env 2>/dev/null; ./gen-mdm-certs.sh && \
+  # NB: `cp -n` returns non-zero when the target exists, which aborts this subshell under
+  # `set -e` (callers set it) — so copy only when .env is actually missing.
+  ( cd nanomdm && { [[ -f .env ]] || cp .env.example .env; } && ./gen-mdm-certs.sh && \
     docker compose up -d --build )
   local deadline=$((SECONDS + 60))
   until curl -sf "${NANOMDM_URL}/version" >/dev/null 2>&1; do
