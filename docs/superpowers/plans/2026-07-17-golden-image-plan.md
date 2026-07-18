@@ -64,8 +64,8 @@ The four `lib/*.sh` units each have one responsibility and are sourced (not exec
 
 # --- Image identity ---
 ORG="sunstoneinstitute"
-MACOS_VER="sequoia-15"                                   # tag suffix; see OPEN ITEM (pin exact base)
-BASE_IMAGE="ghcr.io/cirruslabs/macos-sequoia-base:latest"  # OPEN ITEM: pin to a digest, not :latest
+MACOS_VER="tahoe-26"                                     # tag suffix; see OPEN ITEM (pin exact base)
+BASE_IMAGE="ghcr.io/cirruslabs/macos-tahoe-base:latest"  # OPEN ITEM: pin to a digest, not :latest
 GOLDEN_LOCAL="weblogin-psso-golden-build"                # transient local Tart VM name during bake
 GOLDEN_REMOTE="ghcr.io/${ORG}/weblogin-psso-test-vm:${MACOS_VER}"
 
@@ -708,7 +708,7 @@ Expected: prints `SYNTAX_OK`
 - [ ] **Step 3: Dry-run prints the ordered plan without touching tart/docker**
 
 Run: `cd testing/golden && ./make-golden.sh --dry-run`
-Expected: prints the 10-step `Golden-image bake plan:` block, ending at `cleanup`, with `${GOLDEN_REMOTE}` expanded to `ghcr.io/sunstoneinstitute/weblogin-psso-test-vm:sequoia-15`. No VM is created.
+Expected: prints the 10-step `Golden-image bake plan:` block, ending at `cleanup`, with `${GOLDEN_REMOTE}` expanded to `ghcr.io/sunstoneinstitute/weblogin-psso-test-vm:tahoe-26`. No VM is created.
 
 - [ ] **Step 4: Lint with shellcheck if available**
 
@@ -896,12 +896,32 @@ git commit -m "docs(golden): README for the golden VM image pipeline"
 
 **Type/name consistency:** `golden.env` variable names (`GOLDEN_LOCAL`, `GOLDEN_REMOTE`, `EXT_BUNDLE_ID`, `PSSO_BASE_URL`, `CA_CRT`, `IDP_HOST`, `NANOMDM_URL`, `NANOMDM_API_KEY`) are used identically across `preflight.sh`, `guest.sh`, `provision.sh`, `enroll.sh`, `make-golden.sh`, and `verify-golden.sh`. Function names (`preflight`, `wait_for_ssh`, `guest_exec`, `guest_push`, `guest_udid`, `provision_guest`, `enroll_guest`, `nanomdm_up`/`nanomdm_down`, `verify_enrolled`) are defined once and called consistently. `EXT_BUNDLE_ID` is the same string in the profile payload (Task 2), the managed-pref read (Task 8 `defaults read`), and the extension's CFPreferences domain confirmed in `Config/Local.xcconfig`.
 
+## First real bake outcome (2026-07-18)
+
+The first end-to-end bake ran on a real Tahoe guest and reached **user-approved MDM
+enrollment**, fully verified hop by hop: SCEP identity issued, `Authenticate` +
+Device/User `TokenUpdate` through the nginx mTLS proxy, a live **Apple APNs push**
+`Acknowledged`, and both the PSSO and PPPC profiles installed via MDM (enrollment
+survives reboot). Getting there fixed five defects (commit `a95c73e`):
+
+1. MDM payload must declare `ServerCapabilities` = `com.apple.mdm.per-user-connections`
+   (Tahoe rejects it otherwise).
+2. `IdentityCertificateUUID` must equal the SCEP payload's **PayloadUUID** (not its
+   PayloadIdentifier), or the MDM mTLS connection presents no client cert.
+3. `CheckInURL` must be `/mdm` — nanomdm serves check-in and commands on one combined
+   endpoint and has no `/checkin` route.
+4. The TLS **server** leaf must be Apple-trust-compliant (`basicConstraints=CA:FALSE`,
+   `serverAuth` EKU, ≤397-day life) or trustd fails with "Leaf has invalid basic
+   constraints".
+5. Vendor keys must also ship as a `com.apple.ManagedClient.preferences` payload for the
+   bundle-id domain; keys inside the SSO payload are invisible to `CFPreferencesCopyAppValue`.
+
 ## Open items carried forward
 
-- **Base macOS Tart image + version pin.** `golden.env` uses `ghcr.io/cirruslabs/macos-sequoia-base:latest`; pin to a specific digest/tag and set `MACOS_VER` accordingly before publishing a shared image (shared design open item: "base macOS Tart image source + version pinning").
+- **Base macOS Tart image + version pin.** `golden.env` uses `ghcr.io/cirruslabs/macos-tahoe-base:latest`; pin to a specific digest/tag and set `MACOS_VER` accordingly before publishing a shared image (shared design open item: "base macOS Tart image source + version pinning").
 - **Real `ClientID` / `Issuer` / `Audience` / Team ID.** `golden.env` ships `REPLACE_WITH_*`. Fill from the production PSSO configuration (aligns with Plan 1's `realm-export.json` note). `BaseURL` is already correct (`https://idp.test:8443`).
-- **nanomdm / SCEP image tags + exact CLI flags.** Compose (Task 3) and `enroll.sh` use plausible upstream flags; confirm against current nanomdm/micromdm-scep docs (image names, `-push-cert`/`-push-key`, enqueue URL shape `.../v1/enqueue/<udid>?push=1`).
-- **UAMDM approval automation.** The `cliclick` approval click coordinate in `enroll.sh` is a placeholder; determine reliable coordinates/timing against the target macOS version's System Settings > Device Management pane, or fall back to a documented manual VNC approval. `verify_enrolled()` is the correctness gate regardless.
-- **Host NAT gateway discovery inside the guest** is done with `route -n get default | awk '/gateway/{print $2}'`; confirm this resolves to the reachable host IP under Tart NAT on the target macOS version (validated as syntactically correct on the host in Task 5).
-- **APNs push at bake time vs. direct install.** The plan pushes the PSSO profile via nanomdm `InstallProfile` (needs the gated push cert). If the one push proves fiddly, an acceptable fallback is installing `psso-profile.mobileconfig` directly with `profiles install` while keeping the UAMDM enrollment for managed state — decide during the first real bake.
-- **Extensible SSO payload shape** (`Type: Redirect` + `PlatformSSO`/`URLs`) — confirm the exact keys Apple requires for this extension to register and to surface the vendor keys as managed prefs; adjust `generate-psso-profile.sh` if registration needs `AuthorizationEndpointURL`/`TokenEndpointURL` or a different `Type`.
+- **Managed-pref live read needs the extension present.** `generate-psso-profile.sh` now delivers the vendor keys as managed preferences and the file lands correctly in `/Library/Managed Preferences/` (both scopes). But `defaults read <bundle-id> BaseURL` does **not** resolve on the bare base VM (no signed PSSO extension installed), so `verify-golden.sh` check 3 can't pass there. Decide whether the golden should include the app, or move that check to run post-app-install.
+- **UAMDM approval is a manual VNC step (by design on Tahoe).** `profiles install` is gone and synthetic clicks are TCC-gated headlessly, so `enroll.sh` stages the profile (`open`) and `wait_for_manual_approval` polls `profiles status` while the maintainer approves via the Tart VNC console. `cliclick` is instead pre-authorized (Accessibility) via an MDM-pushed PPPC profile for later Plan 3 use. Confirmed working; the earlier "scripted approval-click coordinate" idea is superseded.
+- **nanomdm / SCEP CLI flags — confirmed.** nanomdm `0.6.0` with push cert uploaded via the `/v1/pushcert` API (not a flag), enqueue URL `.../v1/enqueue/<udid>?push=1`, single combined `/mdm` endpoint; SCEP built from `micromdm/scep` v2.3.0. All exercised by a real device this bake.
+- **APNs push at bake time — confirmed.** The nanomdm `InstallProfile` push (gated push cert) reached the guest via real Apple APNs and was `Acknowledged`. The `profiles install` fallback is no longer needed and is unavailable on Tahoe anyway.
+- **Host NAT gateway discovery — confirmed.** `route -n get default | awk '/gateway/{print $2}'` mapped `idp.test` → the reachable host gateway on Tahoe under Tart NAT.
