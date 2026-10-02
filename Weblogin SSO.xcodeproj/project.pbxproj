@@ -16,6 +16,7 @@
 		AA00000000000000000000C2 /* RegistrationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B2 /* RegistrationState.swift */; };
 		AA00000000000000000000C3 /* StepUpAuthentication.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B3 /* StepUpAuthentication.swift */; };
 		AA00000000000000000000C4 /* HelpersTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B4 /* HelpersTests.swift */; };
+		AA00000000000000000000C8 /* StepUpOriginTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B8 /* StepUpOriginTests.swift */; };
 		AA00000000000000000000C5 /* RegistrationStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B5 /* RegistrationStateTests.swift */; };
 		AA00000000000000000000C7 /* RegistrationCompletionRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA00000000000000000000B7 /* RegistrationCompletionRegressionTests.swift */; };
 		AA00000000000000000000C6 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9148E1222EA8A225005279FD /* AuthenticationServices.framework */; };
@@ -56,6 +57,7 @@
 		AA00000000000000000000B2 /* RegistrationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegistrationState.swift; path = ssoe/RegistrationState.swift; sourceTree = "<group>"; };
 		AA00000000000000000000B3 /* StepUpAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StepUpAuthentication.swift; path = ssoe/StepUpAuthentication.swift; sourceTree = "<group>"; };
 		AA00000000000000000000B4 /* HelpersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HelpersTests.swift; path = ssoeTests/HelpersTests.swift; sourceTree = "<group>"; };
+		AA00000000000000000000B8 /* StepUpOriginTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StepUpOriginTests.swift; path = ssoeTests/StepUpOriginTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000000B5 /* RegistrationStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegistrationStateTests.swift; path = ssoeTests/RegistrationStateTests.swift; sourceTree = "<group>"; };
 		AA00000000000000000000B7 /* RegistrationCompletionRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RegistrationCompletionRegressionTests.swift; path = ssoeTests/RegistrationCompletionRegressionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -149,6 +151,7 @@
 				AA00000000000000000000B4 /* HelpersTests.swift */,
 				AA00000000000000000000B5 /* RegistrationStateTests.swift */,
 				AA00000000000000000000B7 /* RegistrationCompletionRegressionTests.swift */,
+				AA00000000000000000000B8 /* StepUpOriginTests.swift */,
 				AA00000000000000000000B0 /* Helpers.swift */,
 				AA00000000000000000000B1 /* AuthenticationViewController.swift */,
 				AA00000000000000000000B2 /* RegistrationState.swift */,
@@ -308,6 +311,7 @@
 				AA00000000000000000000C4 /* HelpersTests.swift in Sources */,
 				AA00000000000000000000C5 /* RegistrationStateTests.swift in Sources */,
 				AA00000000000000000000C7 /* RegistrationCompletionRegressionTests.swift in Sources */,
+				AA00000000000000000000C8 /* StepUpOriginTests.swift in Sources */,
 				AA00000000000000000000C0 /* Helpers.swift in Sources */,
 				AA00000000000000000000C1 /* AuthenticationViewController.swift in Sources */,
 				AA00000000000000000000C2 /* RegistrationState.swift in Sources */,
