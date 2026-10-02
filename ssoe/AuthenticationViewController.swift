@@ -68,6 +68,9 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
                 }
             }
         var signedTokenToSend: String?
+        // The step-up request awaiting an answer. Cleared by navigation, a new
+        // authorization request, or delivery, so an answer reaches only the request that asked.
+        var pendingStepUpID: UUID?
         var baseURL = ""
         var loginManager: ASAuthorizationProviderExtensionLoginManager?
         var mdmConfig: (baseURL: String, issuer: String, clientID: String, audience: String)?
@@ -206,6 +209,8 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         self.firstResponseChecked = false
         self.showedInteractiveLogin = false
         self.loginManager = request.loginManager
+        // A new request never inherits a step-up answer owed to an earlier page.
+        self.pendingStepUpID = nil
 
         logger.log("webloginlog: Received an authentication request from: \(request.callerBundleIdentifier)")
         
@@ -604,6 +609,13 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
     
 
     
+    public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        // A new top-level document invalidates any pending step-up answer.
+        if webView === self.webView {
+            pendingStepUpID = nil
+        }
+    }
+
     public func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
         guard  let url = url, let webViewURL = webView.url else {
             return
