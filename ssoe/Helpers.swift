@@ -41,8 +41,8 @@ extension AuthenticationViewController {
         }
      
         if let loginManager = loginManager {
-            if (loginManager.isDeviceRegistered && loginManager.isUserRegistered)
-            {
+          //  if (loginManager.isDeviceRegistered && loginManager.isUserRegistered)
+          //  {
                 
                 
                 var tokenType = "";
@@ -67,7 +67,7 @@ extension AuthenticationViewController {
                     }
                 }
             }
-        }
+        //}
         
         if let headers = authorizationRequest?.httpHeaders {
             // Look for Referer, custom hints, etc.
@@ -230,7 +230,7 @@ extension AuthenticationViewController {
         
         let signKeyId = computeKid(from: signingPublicKey)
         
-        guard let username = loginManager.userLoginConfiguration?.loginUserName else {
+        guard var username = loginManager.userLoginConfiguration?.loginUserName else {
             logger.error("webloginlog: NO USERNAME SAVED!")
             return nil
         }

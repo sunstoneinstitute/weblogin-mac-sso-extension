@@ -259,7 +259,7 @@ extension AuthenticationViewController: ASAuthorizationProviderExtensionAuthoriz
         logger.log("webloginlog: is sso disabled? \(disableSSO)")
         logger.log("webloginlog: is device and user registered? \(userRegistered && deviceRegistered)")
 
-        if disableSSO || !deviceRegistered || !userRegistered {
+        if disableSSO  {
             logger.log("webloginlog: SSO is disabled or the device is not registered. Won't display browser.")
             webView.configuration.userContentController.removeAllScriptMessageHandlers()
             authorizationRequest?.doNotHandle()
