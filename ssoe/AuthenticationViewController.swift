@@ -75,6 +75,8 @@ class AuthenticationViewController: NSViewController, WKNavigationDelegate   {
         var postSaml:Bool = false
         var registrationWebView: WKWebView?
         var authSession: ASWebAuthenticationSession?
+        var reauthChallenge = ""
+        var cachedJWKS: (keys: [[String: Any]], fetchedAt: Date)?
         weak var authViewController: AuthenticationViewController?
 
 

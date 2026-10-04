@@ -22,7 +22,6 @@ extension AuthenticationViewController {
         let expires_in: Int
     }
     
-   
     
     
     struct Nonce: Decodable {
@@ -95,7 +94,7 @@ extension AuthenticationViewController {
         // because String interpolations are redacted by default, so without it you
         // get a length and nothing else. Length + first 40 bytes only.
         let bodyPrefix = String(data: httpBody.prefix(40), encoding: .utf8) ?? "<not utf8>"
-        logger.debug("webloginlog: beginAuthorization. Body length: \(httpBody.count, privacy: .public), body starts with: \(bodyPrefix, privacy: .public)")
+        //logger.debug("webloginlog: beginAuthorization. Body length: \(httpBody.count, privacy: .public), body starts with: \(bodyPrefix, privacy: .public)")
 
         if let httpBodyString = String(data: httpBody, encoding: .utf8)  {
           
@@ -237,6 +236,8 @@ extension AuthenticationViewController {
         }
         
         let isSecureEnclave = loginManager.authenticationMethod == .userSecureEnclaveKey ? true : false
+        let reauth_challenge = makeReauthChallenge()
+        self.reauthChallenge = reauth_challenge
         
         let envelope: [String: Any] = [
             "token": token,
@@ -246,7 +247,8 @@ extension AuthenticationViewController {
             "username" : username,
             "nonce" : nonce.uuidString,
             "client_id": clientId,
-            "secure_enclave" : isSecureEnclave
+            "secure_enclave" : isSecureEnclave,
+            "reauth_challenge" : reauth_challenge
         ]
         do {
             let jsonData = try? JSONSerialization.data(withJSONObject: envelope, options: [])
@@ -360,7 +362,15 @@ extension AuthenticationViewController {
         let hash = SHA256.hash(data: data)
         return Data(hash)
     }
-    
+
+    /// A short, non-reversible tag for a step-up challenge, safe to log. Lets you tell
+    /// two challenges apart (the rotation-desync case) without writing the secret to
+    /// the unified log, where it would outlive the challenge itself.
+    func challengeFingerprint(_ challenge: String) -> String {
+        return String(base64URLEncode(sha256(Data(challenge.utf8))).prefix(8))
+    }
+
+
     func decodeJWT(_ jwt: String) -> [String: Any]? {
         let segments = jwt.split(separator: ".")
         guard segments.count >= 2 else { return nil }
@@ -391,6 +401,214 @@ extension AuthenticationViewController {
     }
     
 
+
+    
+    
+    //Block for verifying a JWT against Keycloak
+    //Used for the Stepup authentication flow
+    func verifyStepUpJWT(stepupToken: String,
+                         localChallenge: String,
+                         loginManager: ASAuthorizationProviderExtensionLoginManager?) async -> Bool {
+
+        
+        
+        guard !localChallenge.isEmpty else {
+            logger.error("webloginlog: step-up verify: no local challenge armed")
+            return false
+        }
+        guard let extensionData = loginManager?.extensionData,
+              let baseURL = extensionData["BaseURL"] as? String else {
+            logger.error("webloginlog: step-up verify: no BaseURL")
+            return false
+        }
+        // jwksEndpointURL is a URL, not a String: casting it to String always yields
+        // nil and silently fails every verification. loginConfiguration is also only
+        // populated once a registration has saved one, hence the BaseURL fallback.
+        guard let jwksURL = loginManager?.loginConfiguration?.jwksEndpointURL
+                ?? URL(string: baseURL + "/protocol/openid-connect/certs") else {
+            logger.error("webloginlog: step-up verify: no JWKS endpoint")
+            return false
+        }
+        let expectedIssuer = extensionData["Issuer"] as? String
+        let expectedAudience = extensionData["Audience"] as? String
+
+        // Split out of a single guard on purpose: one "malformed JWT" cannot tell you
+        // whether the page sent the wrong value, an unsubstituted template placeholder,
+        // or a well-formed token carrying stray whitespace.
+        // Shapes only, never content: when the wrong value is passed here it is the
+        // live challenge, so logging a prefix of it would put the secret in the log.
+        let parts = stepupToken.components(separatedBy: ".")
+        logger.debug("webloginlog: step-up verify: token length \(stepupToken.count, privacy: .public), \(parts.count, privacy: .public) part(s)")
+
+        guard parts.count == 3 else {
+            logger.error("webloginlog: step-up verify: expected 3 JWT parts, got \(parts.count, privacy: .public), total length \(stepupToken.count, privacy: .public)")
+            return false
+        }
+        guard let headerData = base64URLDecode(parts[0]) else {
+            logger.error("webloginlog: step-up verify: header is not base64url, length \(parts[0].count, privacy: .public)")
+            return false
+        }
+        guard let payloadData = base64URLDecode(parts[1]) else {
+            logger.error("webloginlog: step-up verify: payload is not base64url, length \(parts[1].count, privacy: .public)")
+            return false
+        }
+        guard let signature = base64URLDecode(parts[2]) else {
+            logger.error("webloginlog: step-up verify: signature is not base64url, length \(parts[2].count, privacy: .public)")
+            return false
+        }
+        // The JOSE header holds only alg/kid/typ, so it is safe to log in full.
+        guard let header = (try? JSONSerialization.jsonObject(with: headerData)) as? [String: Any] else {
+            logger.error("webloginlog: step-up verify: header is not JSON: \(String(data: headerData, encoding: .utf8) ?? "<not utf8>", privacy: .public)")
+            return false
+        }
+        guard let payload = (try? JSONSerialization.jsonObject(with: payloadData)) as? [String: Any] else {
+            logger.error("webloginlog: step-up verify: payload is not JSON")
+            return false
+        }
+        guard let alg = header["alg"] as? String else {
+            logger.error("webloginlog: step-up verify: no alg in header \(String(data: headerData, encoding: .utf8) ?? "<not utf8>", privacy: .public)")
+            return false
+        }
+
+        // Pin the algorithm. Never honour alg from the token beyond this allow-list:
+        // that is how alg=none and the HMAC-with-the-public-key trick get through.
+        guard alg == "RS256" || alg == "ES256" else {
+            logger.error("webloginlog: step-up verify: unsupported alg \(alg)")
+            return false
+        }
+
+        let kid = header["kid"] as? String
+        guard let jwks = await fetchJWKS(url: jwksURL, needingKid: kid) else {
+            logger.error("webloginlog: step-up verify: no JWKS")
+            return false
+        }
+
+        // Only keys usable for signing, and only the advertised kid when the token names one.
+        let candidates = jwks.filter { jwk in
+            guard ((jwk["use"] as? String) ?? "sig") == "sig" else { return false }
+            if let kid = kid, let jwkKid = jwk["kid"] as? String { return jwkKid == kid }
+            return true
+        }
+        guard !candidates.isEmpty else {
+            logger.error("webloginlog: step-up verify: no JWKS key for kid \(kid ?? "nil")")
+            return false
+        }
+
+        let signingInput = Data(parts[0].utf8) + Data(".".utf8) + Data(parts[1].utf8)
+        guard candidates.contains(where: {
+            verifyJWSSignature(alg: alg, jwk: $0, signingInput: signingInput, signature: signature)
+        }) else {
+            logger.error("webloginlog: step-up verify: bad signature")
+            return false
+        }
+
+        guard let exp = payload["exp"] as? Double,
+              Date().timeIntervalSince1970 < exp + 30 else {   // 30s clock skew
+            logger.error("webloginlog: step-up verify: expired")
+            return false
+        }
+        if let expectedIssuer, let iss = payload["iss"] as? String, iss != expectedIssuer {
+            logger.error("webloginlog: step-up verify: issuer mismatch")
+            return false
+        }
+        if let expectedAudience {
+            let auds = (payload["aud"] as? [String]) ?? (payload["aud"] as? String).map { [$0] } ?? []
+            guard auds.contains(expectedAudience) else {
+                logger.error("webloginlog: step-up verify: audience mismatch")
+                return false
+            }
+        }
+        guard let got = payload["reauth_challenge"] as? String, got == localChallenge else {
+            // Fingerprints, not values: localChallenge is the live armed secret, so it
+            // must never reach the log. Truncated hashes still answer the question that
+            // matters here — are these two different challenges, or is the claim absent?
+            let claimed = payload["reauth_challenge"] as? String
+            logger.error("webloginlog: step-up verify: challenge mismatch, claim \(claimed.map { self.challengeFingerprint($0) } ?? "<absent>", privacy: .public) vs armed \(self.challengeFingerprint(localChallenge), privacy: .public)")
+            return false
+        }
+        return true
+    }
+
+    /// Realm JWKS, cached for the request. Refetches once when the token names a kid we
+    /// do not hold, which is what a realm key rotation looks like.
+    private func fetchJWKS(url: URL, needingKid kid: String?) async -> [[String: Any]]? {
+        if let cached = cachedJWKS,
+           Date().timeIntervalSince(cached.fetchedAt) < 300,
+           kid == nil || cached.keys.contains(where: { ($0["kid"] as? String) == kid }) {
+            return cached.keys
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5     // the user is waiting on a prompt; do not hang
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let keys = obj["keys"] as? [[String: Any]] else {
+            logger.error("webloginlog: step-up verify: JWKS fetch failed")
+            return nil
+        }
+        cachedJWKS = (keys, Date())
+        return keys
+    }
+
+    private func verifyJWSSignature(alg: String, jwk: [String: Any],
+                                    signingInput: Data, signature: Data) -> Bool {
+        switch alg {
+        case "ES256":
+            // JWS ES256 signatures are raw r||s, not DER.
+            guard let key = p256PublicKey(fromJWK: jwk), signature.count == 64,
+                  let sig = try? P256.Signing.ECDSASignature(rawRepresentation: signature) else { return false }
+            return key.isValidSignature(sig, for: signingInput)
+        case "RS256":
+            guard let key = rsaPublicKey(fromJWK: jwk) else { return false }
+            return SecKeyVerifySignature(key, .rsaSignatureMessagePKCS1v15SHA256,
+                                         signingInput as CFData, signature as CFData, nil)
+        default:
+            return false
+        }
+    }
+
+    private func p256PublicKey(fromJWK jwk: [String: Any]) -> P256.Signing.PublicKey? {
+        guard (jwk["crv"] as? String) == "P-256",
+              let x = (jwk["x"] as? String).flatMap(base64URLDecode),
+              let y = (jwk["y"] as? String).flatMap(base64URLDecode),
+              x.count == 32, y.count == 32 else { return nil }
+        return try? P256.Signing.PublicKey(x963Representation: Data([0x04]) + x + y)
+    }
+
+    /// CryptoKit has no RSA, so rebuild a SecKey from the JWK's modulus and exponent
+    /// via a PKCS#1 RSAPublicKey DER blob.
+    private func rsaPublicKey(fromJWK jwk: [String: Any]) -> SecKey? {
+        guard let n = (jwk["n"] as? String).flatMap(base64URLDecode),
+              let e = (jwk["e"] as? String).flatMap(base64URLDecode) else { return nil }
+        let body = derInteger(n) + derInteger(e)
+        let der = Data([0x30]) + derLength(body.count) + body
+        return SecKeyCreateWithData(der as CFData,
+                                    [kSecAttrKeyType: kSecAttrKeyTypeRSA,
+                                     kSecAttrKeyClass: kSecAttrKeyClassPublic] as CFDictionary, nil)
+    }
+
+    private func derLength(_ n: Int) -> Data {
+        if n < 0x80 { return Data([UInt8(n)]) }
+        var len = n, bytes: [UInt8] = []
+        while len > 0 { bytes.insert(UInt8(len & 0xff), at: 0); len >>= 8 }
+        return Data([0x80 | UInt8(bytes.count)] + bytes)
+    }
+
+    private func derInteger(_ raw: Data) -> Data {
+        var b = Array(raw)
+        while b.count > 1 && b[0] == 0x00 { b.removeFirst() }
+        if let f = b.first, f & 0x80 != 0 { b.insert(0x00, at: 0) }  // keep it positive
+        return Data([0x02]) + derLength(b.count) + Data(b)
+    }
+
+    func base64URLDecode(_ s: String) -> Data? {
+        var t = s.replacingOccurrences(of: "-", with: "+")
+                 .replacingOccurrences(of: "_", with: "/")
+        while t.count % 4 != 0 { t.append("=") }
+        return Data(base64Encoded: t)
+    }
+    
+    
+    
     
     func stringFromManagedPreferences(forKey key: String, inDomain domain: String) -> String? {
         guard let value = CFPreferencesCopyAppValue(key as CFString, domain as CFString) else {
@@ -530,7 +748,9 @@ extension AuthenticationViewController {
         }
     }
 
-    
+    func makeReauthChallenge() -> String {
+        return base64URLEncode(SymmetricKey(size: .bits256).withUnsafeBytes { Data($0) })
+    }
 
     
     

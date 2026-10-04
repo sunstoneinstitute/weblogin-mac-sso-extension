@@ -29,7 +29,36 @@ import LocalAuthentication
 
 
 extension AuthenticationViewController: WKScriptMessageHandler {
-    
+
+    /// True when scheme, host and port all match the configured BaseURL.
+    /// A nil or zero port means the default port for the scheme. Compares origins
+    /// rather than string prefixes, so idp.example.org.evil.net does not match.
+    func isConfiguredIdPOrigin(scheme: String?, host: String?, port: Int?) -> Bool {
+        guard let expected = URLComponents(string: baseURL),
+              let expectedScheme = expected.scheme?.lowercased(),
+              let expectedHost = expected.host?.lowercased(),
+              let scheme = scheme?.lowercased(),
+              let host = host?.lowercased() else { return false }
+
+        func effectivePort(_ port: Int?, _ scheme: String) -> Int? {
+            if let port = port, port != 0 { return port }
+            switch scheme {
+            case "https": return 443
+            case "http": return 80
+            default: return nil
+            }
+        }
+
+        return scheme == expectedScheme
+            && host == expectedHost
+            && effectivePort(port, scheme) == effectivePort(expected.port, expectedScheme)
+    }
+
+    func isConfiguredIdPURL(_ url: URL?) -> Bool {
+        guard let url = url else { return false }
+        return isConfiguredIdPOrigin(scheme: url.scheme, host: url.host, port: url.port)
+    }
+
     func userContentController(_ userContentController: WKUserContentController,
                                didReceive message: WKScriptMessage) {
         
@@ -39,54 +68,73 @@ extension AuthenticationViewController: WKScriptMessageHandler {
         guard let body = message.body as? [String: Any] else { return }
         
         if let type = body["type"] as? String, type == "getSignedToken" {
+
             
             
-            
-            
-            handleStepUpRequest{
-                error in
-                if let error = error {
-                    logger.log("webloginlog: Reauthentication failed: \(error)")
+            // Kept out of the condition above on purpose: when the page sends no
+            // challenge token it is still waiting for pssoSigned, so this has to be
+            // answered and logged rather than silently skipped.
+            guard let challenge = body["challenge"] as? String else {
+                logger.error("webloginlog: getSignedToken with no challenge token in the message body")
+                sendSignedTokenToJS("none")
+                return
+            }
+
+            Task {
+                guard await verifyStepUpJWT(stepupToken: challenge, localChallenge: self.reauthChallenge, loginManager: loginManager) else {
+                    logger.error("webloginlog: step-up assertion failed verification")
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         self.sendSignedTokenToJS( "none");
                     }
-                    return
+                    return                           // fail closed, no prompt
                 }
-                
-                
-                Task { @MainActor in
-                    logger.log("webloginlog: Sending signed token to the IdP via javascript")
-                    
-                    let tokens = self.loginManager?.ssoTokens
-                    var tokenType = "";
-                    if let value = tokens?[AnyHashable("refresh_token_expires_in")] as? Int {
-                        tokenType = "refresh_token"
-                        
-                    }else {
-                        tokenType = "id_token"
+            
+            
+                handleStepUpRequest{
+                    error in
+                    if let error = error {
+                        logger.log("webloginlog: Reauthentication failed: \(error)")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            self.sendSignedTokenToJS( "none");
+                        }
+                        return
                     }
-                    let clientId = UUID().uuidString
-                  
+                    
+                    
+                    Task { @MainActor in
+                        logger.log("webloginlog: Sending signed token to the IdP via javascript")
+                        
+                        let tokens = self.loginManager?.ssoTokens
+                        var tokenType = "";
+                        if let value = tokens?[AnyHashable("refresh_token_expires_in")] as? Int {
+                            tokenType = "refresh_token"
+                            
+                        }else {
+                            tokenType = "id_token"
+                        }
+                        let clientId = UUID().uuidString
+                        
+                        // Every exit below answers the page. A bare return here leaves
+                        // the IdP waiting for pssoSigned forever and the login wedged.
                         guard let nonce = try? await self.getNonceFromIdp(clientRequestId: clientId) else {
                             logger.error("webloginlog: Failed to fetch nonce")
+                            self.sendSignedTokenToJS("none")
                             return
-                            
+
                         }
-                        
-                        if let loginManager = self.loginManager, let value = tokens?[AnyHashable(tokenType)] as? String {
-                            if let token = tokens?[tokenType]{
-                                let signedToken = self.signToken(token: token as! String, tokenType: tokenType, loginManager: loginManager, nonce: nonce, clientId: clientId)
-                                self.signedTokenToSend = signedToken
-                                self.sendSignedTokenToJS(self.signedTokenToSend ?? "none");
-                                
-                                
-                            }
-                            
-                            
+
+                        guard let loginManager = self.loginManager,
+                              let token = tokens?[AnyHashable(tokenType)] as? String,
+                              let signedToken = self.signToken(token: token, tokenType: tokenType, loginManager: loginManager, nonce: nonce, clientId: clientId) else {
+                            logger.error("webloginlog: No \(tokenType) to sign for step-up")
+                            self.sendSignedTokenToJS("none")
+                            return
                         }
+                        self.signedTokenToSend = signedToken
+                        self.sendSignedTokenToJS(signedToken)
                     }
                     
-                
+                }
             }
         }
         
@@ -140,9 +188,8 @@ extension AuthenticationViewController: WKScriptMessageHandler {
                     logger.log("webloginlog: Reauthentication required")
                     self.loginManager?.userNeedsReauthentication{ error in
                         
-                        logger.log("webloginlog: Error in reauthentication: \(error?.localizedDescription ?? "no error description")")
                         if error != nil {
-                            logger.log("webloginlog: Error with userNeedsReauthentication")
+                            logger.log("webloginlog: Error with userNeedsReauthentication: \(error?.localizedDescription ?? "no error description")")
                             DispatchQueue.main.async {
                                 self.sendSignedTokenToJS("none")
                                 completion(error)
@@ -206,11 +253,19 @@ extension AuthenticationViewController: WKScriptMessageHandler {
     }
     
     func sendSignedTokenToJS(_ signedToken: String) {
-        // Escape quotes and backslashes for safe JS embedding
-        
+        // NOT escaped, despite what this comment used to claim. Safe only because a
+        // signed envelope is base64url and dots. If anything else can ever reach this,
+        // switch to callAsyncJavaScript and pass the token as a bound argument.
         let js = "pssoSigned('\(signedToken)');"
-        
+
         DispatchQueue.main.async {
+            // Reauthentication takes seconds, and the web view can navigate during that
+            // window. The step-up request was verified, but the answer must not land in
+            // whatever document happens to be current now: check the page at delivery.
+            guard self.isConfiguredIdPURL(self.webView.url) else {
+                logger.error("webloginlog: Not delivering step-up result: the page is no longer the configured IdP")
+                return
+            }
             self.webView.evaluateJavaScript(js) { _, error in
                 if let error = error {
                     logger.error("webloginlog: Error calling pssoSigned: \(error)")
