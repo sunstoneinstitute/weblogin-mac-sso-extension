@@ -235,6 +235,13 @@ extension AuthenticationViewController {
             return nil
         }
         
+        if username.isEmpty {
+            logger.log("webloginlog: the username is blank. Use the token's username.")
+            let decodedToken = self.decodeJWT(token)
+            username =  decodedToken?["preferred_username"] as? String ?? ""
+            
+        }
+        
         let isSecureEnclave = loginManager.authenticationMethod == .userSecureEnclaveKey ? true : false
         let reauth_challenge = makeReauthChallenge()
         self.reauthChallenge = reauth_challenge
