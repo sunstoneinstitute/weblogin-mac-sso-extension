@@ -33,6 +33,7 @@ extension AuthenticationViewController: WKScriptMessageHandler {
     /// True when scheme, host and port all match the configured BaseURL.
     /// A nil or zero port means the default port for the scheme. Compares origins
     /// rather than string prefixes, so idp.example.org.evil.net does not match.
+    /// Author: Stig Bakken @stigsb
     func isConfiguredIdPOrigin(scheme: String?, host: String?, port: Int?) -> Bool {
         guard let expected = URLComponents(string: baseURL),
               let expectedScheme = expected.scheme?.lowercased(),
@@ -54,6 +55,7 @@ extension AuthenticationViewController: WKScriptMessageHandler {
             && effectivePort(port, scheme) == effectivePort(expected.port, expectedScheme)
     }
 
+    /// Author: Stig Bakken @stigsb
     func isConfiguredIdPURL(_ url: URL?) -> Bool {
         guard let url = url else { return false }
         return isConfiguredIdPOrigin(scheme: url.scheme, host: url.host, port: url.port)
