@@ -66,7 +66,7 @@ with full Xcode; this repo's dev hosts may carry only Command Line Tools).
 
 ## Run just the pure unit tests (no VM needed)
 
-    python3.12 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
+    python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
     pytest tests
 
 ## Environment (set by test-pkg.sh; override as needed)

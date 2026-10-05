@@ -44,5 +44,5 @@ Mirrors what the extension calls (appended to the profile `BaseURL`):
 
 ## Run the unit tests
 
-    python3.12 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
+    python3 -m venv .venv && . .venv/bin/activate && pip install -e '.[dev]'
     pytest
